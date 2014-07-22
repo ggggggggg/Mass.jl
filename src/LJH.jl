@@ -22,7 +22,7 @@ immutable LJHFile
     nrec             ::Int64         # number of (pulse) records in file
     dt               ::Float64       # sample spacing (microseconds)
     npre             ::Int64         # nPresample
-    ntot             ::Int64         # number of sample per record
+    nsamp             ::Int64         # number of sample per record
     reclength        ::Int64         # record length (bytes) including timestamp
     channum          ::Uint16        # channel number  
     function LJHFile(name::ASCIIString)
@@ -44,7 +44,7 @@ end
 function Base.show(io::IO, f::LJHFile)
     print(io, "LJHFile channel $(f.channum)\n")   
     print(io, f.name*"\n")
-    print(io, "$(f.nrec) records with $(f.npre) presamples and $(f.ntot) samples each\n")
+    print(io, "$(f.nrec) records with $(f.npre) presamples and $(f.nsamp) samples each\n")
 end
 
 
@@ -102,10 +102,10 @@ end
 # (error if eof occurs or insufficient space in data)
 function fileRecords(f::LJHFile, nrec::Integer,
                      times::Vector{Uint64}, data::Matrix{Uint16})
-    #assert(nrec <= min(length(times),size(data,2)) && size(data,1)==f.ntot)
+    #assert(nrec <= min(length(times),size(data,2)) && size(data,1)==f.nsamp)
     for i=1:nrec
         times[i] = recordTime(read(f.str, Uint8, 6))
-        data[:,i] = read(f.str, Uint16, f.ntot)
+        data[:,i] = read(f.str, Uint16, f.nsamp)
     end
 end
 
@@ -121,15 +121,15 @@ function fileRecords(f::LJHFile, recIndices::Vector{Int},
     for i = 1:length(recIndices)
         seekTo(f,recIndices[i])
         times[i] = recordTime(read(f.str, Uint8, 6))
-        data[:,i] = read(f.str, Uint16, f.ntot)
+        data[:,i] = read(f.str, Uint16, f.nsamp)
     end
     seek(f.str,pos)
 end
 
 # support for ljhfile[1:7] syntax
-seekTo(f::LJHFile, i::Int) = seek(f.str,f.header.headerSize+(i-1)*(2*f.ntot+6))
+seekTo(f::LJHFile, i::Int) = seek(f.str,f.header.headerSize+(i-1)*(2*f.nsamp+6))
 function Base.getindex(f::LJHFile,indexes)
-    data = Array(Uint16, f.ntot, length(indexes))
+    data = Array(Uint16, f.nsamp, length(indexes))
     times = Array(Uint64, length(indexes))
     fileRecords(f,collect(indexes), times, data)
     return (data,times)
@@ -141,7 +141,7 @@ Base.endof(f::LJHFile) = f.nrec
 # access as iterator
 function readrecord(f::LJHFile)
     timestamp = recordTime(read(f.str, Uint8, 6))
-    data = read(f.str, Uint16, f.ntot)
+    data = read(f.str, Uint16, f.nsamp)
     return data, timestamp
 end
 Base.start(f::LJHFile) = (LJHRewind(f);1)
@@ -152,7 +152,7 @@ Base.done(f::LJHFile, j) = j == f.nrec+1
 function fileData(filename::String)
     ljh = LJHFile(filename)
     time = Array(Uint64, ljh.nrec)
-    data = Array(Uint16, ljh.ntot, ljh.nrec)
+    data = Array(Uint16, ljh.nsamp, ljh.nrec)
     fileRecords(ljh,ljh.nrec, time,data)
     close(ljh.str)
     vec(data)
@@ -186,12 +186,12 @@ function recordHeader(t::Uint64, header::Vector{Uint8})
 end
 
 # writing ljh files
-function writeLJHHeader(filename::String,dt,npre,ntot)
+function writeLJHHeader(filename::String,dt,npre,nsamp)
     f = open(filename, "w")
-    writeLJHHeader(f,dt,npre,ntot)
+    writeLJHHeader(f,dt,npre,nsamp)
     close(f)
 end
-function writeLJHHeader(io::IO, dt, npre, ntot)
+function writeLJHHeader(io::IO, dt, npre, nsamp)
     write(io,
 "#LJH Memorial File Format
 Save File Format Version: 2.0.0
@@ -225,7 +225,7 @@ Anti-alias low-pass cutoff frequency (Hz): 0.000
 Timebase: $(dt)
 Number of samples per point: 1
 Presamples: $(npre)
-Total Samples: $(ntot)
+Total Samples: $(nsamp)
 Trigger (V): 250.000000
 Tigger Hysteresis: 0
 Trigger Slope: +
