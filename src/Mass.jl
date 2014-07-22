@@ -1,5 +1,7 @@
+include("MicrocalFiles.jl")
 module Mass
-include("LJH.jl")
+using MicrocalFiles
+export microcal_open
 
 
 println("yay imported Mass!")
