@@ -1,5 +1,4 @@
 module Mass
 
-# package code goes here
-
+println("yay imported Mass!")
 end # module
