@@ -42,9 +42,9 @@ immutable LJHFile
     end
 end
 
-type LJHSlice
+type LJHSlice{T<:AbstractArray}
     ljhfile::LJHFile
-    slice::AbstractVector
+    slice::T
 end
 
 function Base.show(io::IO, f::LJHFile)
@@ -115,26 +115,28 @@ function fileRecords(f::LJHFile, nrec::Integer,
     end
 end
 
-function LJHRewind(f::LJHFile)
-    seek(f.str, f.header.headerSize)
-end
+LJHRewind(f::LJHFile) = seek(f.str, f.header.headerSize)
+
 
 # Read specific record numbers and for each return time and samples;
 # (error if eof occurs or insufficient space in data)
 function fileRecords(f::LJHFile, recIndices::Vector{Int},
                      times::Vector{Uint64}, data::Matrix{Uint16})
     for i = 1:length(recIndices)
-        seekTo(f,recIndices[i])
+        seekto(f,recIndices[i])
         times[i] = recordTime(read(f.str, Uint8, 6))
         data[:,i] = read(f.str, Uint16, f.nsamp)
     end
 end
 
 # support for ljhfile[1:7] syntax
-seekTo(f::LJHFile, i::Int) = seek(f.str,f.header.headerSize+(i-1)*(2*f.nsamp+6))
+seekto(f::LJHFile, i::Int) = seek(f.str,f.header.headerSize+(i-1)*(2*f.nsamp+6))
 Base.getindex(f::LJHFile,indexes::AbstractVector)=LJHSlice(f, indexes)
 function Base.getindex(f::LJHFile,index::Int)
-    seekTo(f, index)
+    seekto(f, index)
+    pop!(f)
+end
+function Base.pop!(f::LJHFile) 
     data, timestamp = read(f.str, Uint16, f.nsamp), recordTime(read(f.str, Uint8, 6))
 end
 
@@ -143,13 +145,18 @@ Base.length(f::LJHFile) = f.nrec
 Base.endof(f::LJHFile) = f.nrec
 
 # access as iterator
-Base.start(f::LJHSlice) = start(f.slice)
-function Base.next(f::LJHSlice, j) 
+Base.start{T}(f::LJHSlice{T}) = (j=start(f.slice);seekto(f.ljhfile,j);j)
+function Base.next{T<:UnitRange}(f::LJHSlice{T}, j) 
+    n,r=next(f.slice,j)
+    pop!(f.ljhfile),r
+end
+function Base.next{T}(f::LJHSlice{T},j)
     n,r=next(f.slice,j)
     f.ljhfile[n],r
 end
-Base.done(f::LJHSlice, j) = done(f.slice,j)
-Base.length(f::LJHSlice) = length(f.slice)
+Base.done{T}(f::LJHSlice{T}, j) = done(f.slice,j)
+Base.length{T}(f::LJHSlice{T}) = length(f.slice)
+Base.endof{T}(f::LJHSlice{T}) = length(f.slice)
 
 # From LJH file, return all data samples as single vector
 function fileData(filename::String)
@@ -161,7 +168,16 @@ function fileData(filename::String)
     vec(data)
 end
 
-             
+function fileData(ljh::LJHFile)
+    time = Array(Uint64, ljh.nrec)
+    data = Array(Uint16, ljh.nsamp, ljh.nrec)
+    fileRecords(ljh,ljh.nrec, time,data)
+    close(ljh.str)
+    vec(data)
+end        
+
+
+
 # Time in microseconds, given six-byte pulse record header (LJH version 2.1.0)
 function recordTime(header::Vector{Uint8})
     frac = uint64(header[1])
