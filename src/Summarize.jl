@@ -6,7 +6,7 @@ module Summarize
 export summarize, PulseSummaries
 using ..MicrocalFiles
 
-using HDF5
+using HDF5, ..H5Helper
 
 # Contain a single channel's complete "pulse summary information"
 # We use these summary data for:
@@ -44,46 +44,10 @@ type PulseSummaries
             postpeak_deriv, timestamp, peak_index, peak_value, min_value)
     end
 end
-function Base.setindex!(s::PulseSummaries, v, i::Integer)
-    for (name, value) in zip(names(s), v)
-        getfield(s, name)[i]=value
-    end
-end
 
 
 
-# Create a new or open an existing group within an HDF5 object
-# If you can figure out a native syntax that handles both cases,
-# then we'd prefer to use it.
-function g_create_or_open(parent::Union(HDF5File,HDF5Group), name::String)
-    exists(parent, name) && return parent[name]
-    g_create(parent, name)
-end
 
-
-
-# Create a new or update an existing dataset within an HDF5 object
-# If you can figure out a native syntax that handles both cases,
-# then we'd prefer to use it.
-function ds_update(parent::HDF5Group, name::String, value)
-    if exists(parent, name)
-        parent[name][:] = value
-    else
-        parent[name] = value
-    end
-end
-
-# Create a new or update an existing dataset within an HDF5 object
-# If you can figure out a native syntax that handles both cases,
-# then we'd prefer to use it.
-function attr_update(parent::HDF5Group,name::String,value)
-    if exists(attrs(parent), name)
-        # Don't do anything if the existing attribute is already correct
-        a_read(parent, name) == value && return value
-        a_delete(parent, name)
-    end
-    attrs(parent)[name] = value
-end
 
 
 # Generate the HDF5 summary for an LJH file by filename
@@ -104,17 +68,17 @@ function summarize(file::MicrocalFiles.LJHFile)
     h5grp = g_create_or_open(h5file, grpname)
 
     # Store basic information
-    attr_update(h5grp, "npulses", file.nrec)
-    attr_update(h5grp, "nsamples", file.nsamp)
-    attr_update(h5grp, "npresamples", file.npre)
-    attr_update(h5grp, "frametime", file.dt)
-    attr_update(h5grp, "rawname", file.name)
+    a_update(h5grp, "npulses", file.nrec)
+    a_update(h5grp, "nsamples", file.nsamp)
+    a_update(h5grp, "npresamples", file.npre)
+    a_update(h5grp, "frametime", file.dt)
+    a_update(h5grp, "rawname", file.name)
 
     summary = compute_summary(file)
 
     summgrp = g_create_or_open(h5grp,"summary")
     for field in names(summary)
-        ds_update(summgrp, string(field), getfield(summary, field))
+        d_update(summgrp, string(field), getfield(summary, field))
 #         summgrp[string(field)] = getfield(summary, field)
         println(string("Updating HDF5 with $grpname/summary/", field))
     end
