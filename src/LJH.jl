@@ -160,7 +160,7 @@ Base.endof(f::LJHFile) = f.nrec
 # access as iterator
 Base.start(f::LJHFile) = (seekto(f,1);1)
 Base.next(f::LJHFile,j) = pop!(f),j+1
-Base.done(f::LJHFile,j) = j==length(f)
+Base.done(f::LJHFile,j) = j==length(f)+1
 Base.length(f::LJHFile) = f.nrec
 
 

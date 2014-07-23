@@ -129,94 +129,10 @@ compute_summary(filename::String) = compute_summary(microcal_open(filename))
 # object given an open LJHFile object. It does not know anything about HDF5
 # files.
 function compute_summary(file::MicrocalFiles.LJHFile)
-    # Read the raw LJH file in chunks of size SEGSIZE.
-    SEGSIZE = 2^24 # bytes
-    pulses_per_seg = div(SEGSIZE, 2*file.nsamp)
-    data = Array(Uint16, file.nsamp, pulses_per_seg)
-    times = Array(Uint64, pulses_per_seg)
-    MicrocalFiles.LJH.LJHRewind(file)
-    summary = PulseSummaries(file.nrec)
-    segnum = 0
-
-    # Use the fact that the Matter / xcaldaq_client trigger is such that
-    # there are actually at least (Npre+2) samples before the signal begins.
-    Npre, Npost = file.npre+2, file.nsamp-(file.npre+2)
-    post_peak_deriv_vect = zeros(Float64, Npost)
-
-    while segnum*pulses_per_seg < file.nrec
-        first = segnum*pulses_per_seg+1
-        last = first + pulses_per_seg-1
-        if last > file.nrec
-            last = file.nrec
-        end
-        # println("Summarizing [$first:$last]")
-        MicrocalFiles.LJH.fileRecords(file, last+1-first, times, data)
-        pulperseg = last-first+1
-        summary.timestamp[first:last] = times[1:pulperseg]
-
-        # p is overall record #; i is record number within this segment
-        for p = first:last
-            i = p+1-first
-            p==1 && (println(data[:,i]);println(times[i]))
-
-            # Pretrigger computation first
-            s = s2 = 0.0
-            for j = 1:Npre
-                d = data[j, i]
-                s += d
-                s2 += d*d
-            end
-            ptm = s/Npre
-            summary.pretrig_mean[p] = ptm
-            summary.pretrig_rms[p] = sqrt(s2/Npre - ptm*ptm)
-
-            # Now post-trigger calculations
-            s = s2 = 0.0
-            peak_idx = 0
-            peak_val = uint16(0)
-            for j = Npre+1:file.nsamp
-                d = data[j, i]
-                if d > peak_val
-                    peak_idx, peak_val = j, d
-                end
-                d = d-ptm
-                s += d
-                s2 += d^2
-            end
-            avg = s/Npost
-
-            posttrig_data = sub(data,Npre+2:endof(data)) # Could use sub?
-            rise_time = estimate_rise_time(posttrig_data, peak_idx-Npre-2,
-                                           peak_val, ptm, file.dt)
-
-            postpeak_data = data[peak_idx+1:end, i]
-            const reject_spikes=true
-            postpeak_deriv = max_timeseries_deriv!(
-                post_peak_deriv_vect, postpeak_data, reject_spikes)
-
-            # Copy results into the PulseSummaries object
-            summary.pulse_average[p] = avg
-            summary.pulse_rms[p] = sqrt(s2/Npost - avg*avg)
-            summary.rise_time[p] = rise_time
-            summary.postpeak_deriv[p] = postpeak_deriv
-            summary.peak_index[p] = peak_idx
-            if peak_val > ptm
-                summary.peak_value[p] = peak_val - uint16(ptm)
-            else
-                summary.peak_value[p] = uint16(0)
-            end
-        end
-        segnum += 1
-    end
-    summary
-end
-
-function compute_summary_iter(file::MicrocalFiles.LJHFile)
     summary = PulseSummaries(file.nrec)
     Npre, Npost = file.npre+2, file.nsamp-(file.npre+2)
     post_peak_deriv_vect = zeros(Float64, Npost)
     for (p, (data, timestamp)) in enumerate(file)
-        p==1 && (println(data);println(timestamp))
         # Pretrigger computation first
         s = s2 = 0.0
         for j = 1:Npre
@@ -267,48 +183,6 @@ function compute_summary_iter(file::MicrocalFiles.LJHFile)
     summary
 end
 
-function summarize(record::(Vector, Uint64), Npre, Npost, dt)
-    data, timestamp = record
-    post_peak_deriv_vect = Array(Float64, Npost)
-    s = s2 = 0.0
-    for j = 1:Npre
-        d = data[j]
-        s += d
-        s2 += d*d
-    end
-    ptm = s/Npre
-    ptrms = sqrt(s2/Npre - ptm*ptm)
-
-    # Now post-trigger calculations
-    s = s2 = 0.0
-    peak_idx, peak_val = 0, uint16(0)
-    min_idx, min_val = length(data), typemax(eltype(data))
-    for j = Npre+1:endof(data)
-        d = data[j]
-        if d > peak_val 
-            peak_idx, peak_val = j, d
-        end
-        if d < min_val
-            min_idx, min_val = j,d
-        end
-        d = d-ptm
-        s += d
-        s2 += d^2
-    end
-    avg = s/Npost
-
-    posttrig_data = sub(data,Npre+2:endof(data)) # Could use sub?
-    rise_time = estimate_rise_time(posttrig_data, peak_idx-Npre-2,
-                                   peak_val, ptm, dt)
-
-    postpeak_data = data[peak_idx+1:end]
-    const reject_spikes=true
-    postpeak_deriv = max_timeseries_deriv!(
-        post_peak_deriv_vect, postpeak_data, reject_spikes)
-    prms = sqrt(s2/Npost-avg*avg)
-    peak_value = max(peak_val-uint16(ptm),0)
-    return ptm, ptrms, avg, prms, rise_time, postpeak_deriv, timestamp, peak_idx, peak_value, min_val
-end
 
 # Rise time computation
 # We define rise time based on rescaling the pulse so that pretrigger mean = 0
