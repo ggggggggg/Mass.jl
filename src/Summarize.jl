@@ -55,9 +55,8 @@ summarize(filename::String) = summarize(MicrocalFiles.LJHFile(filename))
 
 
 
-# Generate the HDF5 summary for an LJH file given an open LJHFile objects
-function summarize(file::MicrocalFiles.LJHFile)
-    hdf5name = hdf5_name_from_ljh_name(file.name)
+function summarize(file::LJHFile)
+        hdf5name = hdf5_name_from_ljh_name(file.name)
     println("We are about to summarize file into '$hdf5name'")
     if isreadable(hdf5name)
         h5file = h5open(hdf5name, "r+")
@@ -66,6 +65,12 @@ function summarize(file::MicrocalFiles.LJHFile)
     end
     grpname=string("chan$(file.channum)")
     h5grp = g_create_or_open(h5file, grpname)
+    summarize(f, h5grp)
+    close(h5file)
+end
+
+# Generate the HDF5 summary for an LJH file given an open LJHFile objects
+function summarize(file::MicrocalFiles.LJHFile, h5grp::HDF5Group)
 
     # Store basic information
     a_update(h5grp, "npulses", file.nrec)
@@ -82,7 +87,6 @@ function summarize(file::MicrocalFiles.LJHFile)
 #         summgrp[string(field)] = getfield(summary, field)
         println(string("Updating HDF5 with $grpname/summary/", field))
     end
-    close(h5file)
 end
 
 
@@ -233,15 +237,4 @@ function max_timeseries_deriv!{T}(
     maximum(deriv)
 end
 
-
-
-# Given an LJH file name, return the HDF5 name
-# Generally, /x/y/z/data_taken_chan1.ljh becomes /x/y/z/data_taken_mass.hdf5
-function hdf5_name_from_ljh_name(ljhname::String)
-    dir = dirname(ljhname)
-    base = basename(ljhname)
-    path,suffix = splitext(ljhname)
-    m = match(r"_chan\d+", path)
-    path = string(path[1:m.offset-1], "_mass.hdf5")
-end
 end # endmodule
