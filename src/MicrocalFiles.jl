@@ -1,7 +1,7 @@
 include("LJH.jl")
 module MicrocalFiles
 using LJH
-export microcal_open
+export microcal_open, LJHFile
 
 # the idea is that all microcal files should support the same interfaces, so you
 # can open any of them with microcal_open

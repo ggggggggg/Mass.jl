@@ -2,10 +2,9 @@
 # Joe Fowler, NIST
 # July 18, 2014
 
-include("MicrocalFiles.jl")
 module Summarize
 export summarize, PulseSummaries
-using MicrocalFiles
+using ..MicrocalFiles
 
 using HDF5
 

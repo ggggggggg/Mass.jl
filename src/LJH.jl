@@ -15,6 +15,7 @@ immutable LJHHeader
 end
 
 # LJH file abstraction
+
 immutable LJHFile
     name             ::String        # filename
     str              ::IOStream      # IOStream to read from LJH file
@@ -39,6 +40,11 @@ immutable LJHFile
         seek(str,hd.headerSize)
         new(name, str, hd, nrec, dt, pre, tot, reclen, channum)
     end
+end
+
+type LJHSlice
+    ljhfile::LJHFile
+    slice::AbstractVector
 end
 
 function Base.show(io::IO, f::LJHFile)
@@ -126,25 +132,24 @@ end
 
 # support for ljhfile[1:7] syntax
 seekTo(f::LJHFile, i::Int) = seek(f.str,f.header.headerSize+(i-1)*(2*f.nsamp+6))
-function Base.getindex(f::LJHFile,indexes)
-    data = Array(Uint16, f.nsamp, length(indexes))
-    times = Array(Uint64, length(indexes))
-    fileRecords(f,collect(indexes), times, data)
-    return (data,times)
+Base.getindex(f::LJHFile,indexes::AbstractVector)=LJHSlice(f, indexes)
+function Base.getindex(f::LJHFile,index::Int)
+    seekTo(f, index)
+    data, timestamp = read(f.str, Uint16, f.nsamp), recordTime(read(f.str, Uint8, 6))
 end
+
 Base.size(f::LJHFile) = (f.nrec,)
 Base.length(f::LJHFile) = f.nrec
 Base.endof(f::LJHFile) = f.nrec
 
 # access as iterator
-function readrecord(f::LJHFile)
-    timestamp = recordTime(read(f.str, Uint8, 6))
-    data = read(f.str, Uint16, f.nsamp)
-    return data, timestamp
+Base.start(f::LJHSlice) = start(f.slice)
+function Base.next(f::LJHSlice, j) 
+    n,r=next(f.slice,j)
+    f.ljhfile[n],r
 end
-Base.start(f::LJHFile) = (LJHRewind(f);1)
-Base.next(f::LJHFile, j) = readrecord(f), j+1
-Base.done(f::LJHFile, j) = j == f.nrec+1
+Base.done(f::LJHSlice, j) = done(f.slice,j)
+Base.length(f::LJHSlice) = length(f.slice)
 
 # From LJH file, return all data samples as single vector
 function fileData(filename::String)
