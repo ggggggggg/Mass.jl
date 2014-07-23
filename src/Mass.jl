@@ -1,6 +1,7 @@
-include("MicrocalFiles.jl")
+include("Summarize.jl")
+
 module Mass
-using MicrocalFiles
+using MicrocalFiles, Summarize
 export microcal_open
 
 

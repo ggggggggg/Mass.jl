@@ -22,7 +22,7 @@ immutable LJHFile
     nrec             ::Int64         # number of (pulse) records in file
     dt               ::Float64       # sample spacing (microseconds)
     npre             ::Int64         # nPresample
-    nsamp             ::Int64         # number of sample per record
+    nsamp            ::Int64         # number of sample per record
     reclength        ::Int64         # record length (bytes) including timestamp
     channum          ::Uint16        # channel number  
     function LJHFile(name::ASCIIString)
@@ -114,16 +114,14 @@ function LJHRewind(f::LJHFile)
 end
 
 # Read specific record numbers and for each return time and samples;
-# restore file position (error if eof occurs or insufficient space in data)
+# (error if eof occurs or insufficient space in data)
 function fileRecords(f::LJHFile, recIndices::Vector{Int},
                      times::Vector{Uint64}, data::Matrix{Uint16})
-    pos = position(f.str)
     for i = 1:length(recIndices)
         seekTo(f,recIndices[i])
         times[i] = recordTime(read(f.str, Uint8, 6))
         data[:,i] = read(f.str, Uint16, f.nsamp)
     end
-    seek(f.str,pos)
 end
 
 # support for ljhfile[1:7] syntax
