@@ -147,8 +147,10 @@ function Base.getindex(f::LJHFile,index::Int)
     seekto(f, index)
     pop!(f)
 end
-function Base.pop!(f::LJHFile) 
-    data, timestamp = read(f.str, Uint16, f.nsamp), recordTime(read(f.str, Uint8, 6))
+function Base.pop!(f::LJHFile)
+    timestamp =  recordTime(read(f.str, Uint8, 6))
+    data = read(f.str, Uint16, f.nsamp)
+    data, timestamp
 end
 
 Base.size(f::LJHFile) = (f.nrec,)

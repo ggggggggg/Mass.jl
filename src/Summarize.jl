@@ -44,6 +44,11 @@ type PulseSummaries
             postpeak_deriv, timestamp, peak_index, peak_value, min_value)
     end
 end
+function Base.setindex!(s::PulseSummaries, v, i::Integer)
+    for (name, value) in zip(names(s), v)
+        getfield(s, name)[i]=value
+    end
+end
 
 
 
@@ -152,6 +157,7 @@ function compute_summary(file::MicrocalFiles.LJHFile)
         # p is overall record #; i is record number within this segment
         for p = first:last
             i = p+1-first
+            p==1 && (println(data[:,i]);println(times[i]))
 
             # Pretrigger computation first
             s = s2 = 0.0
@@ -179,7 +185,7 @@ function compute_summary(file::MicrocalFiles.LJHFile)
             end
             avg = s/Npost
 
-            posttrig_data = data[Npre+2:end, i] # Could use sub?
+            posttrig_data = sub(data,Npre+2:endof(data)) # Could use sub?
             rise_time = estimate_rise_time(posttrig_data, peak_idx-Npre-2,
                                            peak_val, ptm, file.dt)
 
@@ -206,60 +212,103 @@ function compute_summary(file::MicrocalFiles.LJHFile)
 end
 
 function compute_summary_iter(file::MicrocalFiles.LJHFile)
-        summary = PulseSummaries(file.nrec)
-        Npre, Npost = file.npre+2, file.nsamp-(file.npre+2)
-        post_peak_deriv_vect = zeros(Float64, Npost)
-        for (p, (data, timestamp)) in enumerate(file)
-            # Pretrigger computation first
-            s = s2 = 0.0
-            for j = 1:Npre
-                d = data[j]
-                s += d
-                s2 += d*d
-            end
-            ptm = s/Npre
-            summary.pretrig_mean[p] = ptm
-            summary.pretrig_rms[p] = sqrt(s2/Npre - ptm*ptm)
-
-            # Now post-trigger calculations
-            s = s2 = 0.0
-            peak_idx = 0
-            peak_val = uint16(0)
-            for j = Npre+1:file.nsamp
-                d = data[j]
-                if d > peak_val 
-                    peak_idx, peak_val = j, d
-                end
-                d = d-ptm
-                s += d
-                s2 += d^2
-            end
-            avg = s/Npost
-
-            posttrig_data = data[Npre+2:end] # Could use sub?
-            rise_time = estimate_rise_time(posttrig_data, peak_idx-Npre-2,
-                                           peak_val, ptm, file.dt)
-
-            postpeak_data = data[peak_idx+1:end]
-            const reject_spikes=true
-            postpeak_deriv = max_timeseries_deriv!(
-                post_peak_deriv_vect, postpeak_data, reject_spikes)
-
-            # Copy results into the PulseSummaries object
-            summary.pulse_average[p] = avg
-            summary.pulse_rms[p] = sqrt(s2/Npost - avg*avg)
-            summary.rise_time[p] = rise_time
-            summary.postpeak_deriv[p] = postpeak_deriv
-            summary.peak_index[p] = peak_idx
-            if peak_val > ptm
-                summary.peak_value[p] = peak_val - uint16(ptm)
-            else
-                summary.peak_value[p] = uint16(0)
-            end
+    summary = PulseSummaries(file.nrec)
+    Npre, Npost = file.npre+2, file.nsamp-(file.npre+2)
+    post_peak_deriv_vect = zeros(Float64, Npost)
+    for (p, (data, timestamp)) in enumerate(file)
+        p==1 && (println(data);println(timestamp))
+        # Pretrigger computation first
+        s = s2 = 0.0
+        for j = 1:Npre
+            d = data[j]
+            s += d
+            s2 += d*d
         end
+        ptm = s/Npre
+        summary.pretrig_mean[p] = ptm
+        summary.pretrig_rms[p] = sqrt(s2/Npre - ptm*ptm)
+
+        # Now post-trigger calculations
+        s = s2 = 0.0
+        peak_idx = 0
+        peak_val = uint16(0)
+        for j = Npre+1:file.nsamp
+            d = data[j]
+            if d > peak_val 
+                peak_idx, peak_val = j, d
+            end
+            d = d-ptm
+            s += d
+            s2 += d^2
+        end
+        avg = s/Npost
+
+        posttrig_data = sub(data,Npre+2:endof(data))
+        rise_time = estimate_rise_time(posttrig_data, peak_idx-Npre-2,
+                                       peak_val, ptm, file.dt)
+
+        postpeak_data = data[peak_idx+1:end]
+        const reject_spikes=true
+        postpeak_deriv = max_timeseries_deriv!(
+            post_peak_deriv_vect, postpeak_data, reject_spikes)
+
+        # Copy results into the PulseSummaries object
+        summary.pulse_average[p] = avg
+        summary.pulse_rms[p] = sqrt(s2/Npost - avg*avg)
+        summary.rise_time[p] = rise_time
+        summary.postpeak_deriv[p] = postpeak_deriv
+        summary.peak_index[p] = peak_idx
+        if peak_val > ptm
+            summary.peak_value[p] = peak_val - uint16(ptm)
+        else
+            summary.peak_value[p] = uint16(0)
+        end
+    end
     summary
 end
 
+function summarize(record::(Vector, Uint64), Npre, Npost, dt)
+    data, timestamp = record
+    post_peak_deriv_vect = Array(Float64, Npost)
+    s = s2 = 0.0
+    for j = 1:Npre
+        d = data[j]
+        s += d
+        s2 += d*d
+    end
+    ptm = s/Npre
+    ptrms = sqrt(s2/Npre - ptm*ptm)
+
+    # Now post-trigger calculations
+    s = s2 = 0.0
+    peak_idx, peak_val = 0, uint16(0)
+    min_idx, min_val = length(data), typemax(eltype(data))
+    for j = Npre+1:endof(data)
+        d = data[j]
+        if d > peak_val 
+            peak_idx, peak_val = j, d
+        end
+        if d < min_val
+            min_idx, min_val = j,d
+        end
+        d = d-ptm
+        s += d
+        s2 += d^2
+    end
+    avg = s/Npost
+
+    posttrig_data = sub(data,Npre+2:endof(data)) # Could use sub?
+    rise_time = estimate_rise_time(posttrig_data, peak_idx-Npre-2,
+                                   peak_val, ptm, dt)
+
+    postpeak_data = data[peak_idx+1:end]
+    const reject_spikes=true
+    postpeak_deriv = max_timeseries_deriv!(
+        post_peak_deriv_vect, postpeak_data, reject_spikes)
+    prms = sqrt(s2/Npost-avg*avg)
+    peak_value = max(peak_val-uint16(ptm),0)
+    return ptm, ptrms, avg, prms, rise_time, postpeak_deriv, timestamp, peak_idx, peak_value, min_val
+end
 
 # Rise time computation
 # We define rise time based on rescaling the pulse so that pretrigger mean = 0
@@ -267,7 +316,7 @@ end
 # point exceeding 10% and the last point not exceeding 90%. The time it takes that
 # interpolation to rise from 0 to 100% is the rise time.
 #
-function estimate_rise_time(pulserecord::Vector, peakindex::Integer,peakval,ptm,frametime)
+function estimate_rise_time(pulserecord, peakindex::Integer,peakval,ptm,frametime)
     idx10 = 1
     (peakindex > length(pulserecord) || peakindex < 1) && (peakindex = length(pulserecord))
 
@@ -287,14 +336,14 @@ end
 # Estimate the derivative (units of arbs / sample) for a pulse record or other timeseries.
 # This version uses the default kernel of [-2,-1,0,1,2]/10.0
 #
-max_timeseries_deriv!{T}(deriv::Vector{T}, pulserecord::Array, reject_spikes::Bool) =
-    max_timeseries_deriv!(deriv, pulserecord, convert(Vector{T},[.2 : -.1 : -.2]), reject_spikes)
+max_timeseries_deriv!(deriv, pulserecord::Array, reject_spikes::Bool) =
+    max_timeseries_deriv!(deriv, pulserecord, convert(Vector{eltype(deriv)},[.2 : -.1 : -.2]), reject_spikes)
 
 
 # Post-peak derivative computed using Savitzky-Golay filter of order 3
 # and fitting 1 point before...3 points after.
 #
-max_timeseries_deriv_SG!(deriv::Vector, pulserecord::Vector, reject_spikes::Bool) =
+max_timeseries_deriv_SG!(deriv, pulserecord::Vector, reject_spikes::Bool) =
     max_timeseries_deriv!(deriv, pulserecord, [-0.11905, .30952, .28572, -.02381, -.45238],
                             reject_spikes)
 
