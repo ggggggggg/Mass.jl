@@ -41,9 +41,9 @@ type LJHFile
         new(name, str, hd, nrec, dt, pre, tot, reclen, channum)
     end
 end
-function refresh(f::LJHFile)
+function update_num_records(f::LJHFile)
     datalen = stat(f.name).size - f.header.headerSize
-    f.nrec = datalen
+    f.nrec = div(datalen,ljh.reclength)
 end
 
 
