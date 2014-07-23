@@ -16,7 +16,7 @@ end
 
 # LJH file abstraction
 
-immutable LJHFile
+type LJHFile
     name             ::String        # filename
     str              ::IOStream      # IOStream to read from LJH file
     header           ::LJHHeader     # LJH file header data
@@ -41,11 +41,22 @@ immutable LJHFile
         new(name, str, hd, nrec, dt, pre, tot, reclen, channum)
     end
 end
+function refresh(f::LJHFile)
+    datalen = stat(f.name).size - f.header.headerSize
+    f.nrec = datalen
+end
+
 
 type LJHSlice{T<:AbstractArray}
     ljhfile::LJHFile
     slice::T
+    function LJHSlice(ljhfile, slice)
+        maximum(slice)<=ljhfile.nrec || error("$(maximum(slice)) is greater than nrec=$(ljhfile.nrec) in $ljhfile")
+        new(ljhfile, slice)
+    end
 end
+LJHSlice{T<:AbstractArray}(ljhfile::LJHFile, slice::T) = LJHSlice{T}(ljhfile, slice)
+
 
 function Base.show(io::IO, f::LJHFile)
     print(io, "LJHFile channel $(f.channum)\n")   
@@ -145,6 +156,12 @@ Base.length(f::LJHFile) = f.nrec
 Base.endof(f::LJHFile) = f.nrec
 
 # access as iterator
+Base.start(f::LJHFile) = (seekto(f,1);1)
+Base.next(f::LJHFile,j) = pop!(f),j+1
+Base.done(f::LJHFile,j) = j==length(f)
+Base.length(f::LJHFile) = f.nrec
+
+
 Base.start{T}(f::LJHSlice{T}) = (j=start(f.slice);seekto(f.ljhfile,j);j)
 function Base.next{T<:UnitRange}(f::LJHSlice{T}, j) 
     n,r=next(f.slice,j)
@@ -161,20 +178,13 @@ Base.endof{T}(f::LJHSlice{T}) = length(f.slice)
 # From LJH file, return all data samples as single vector
 function fileData(filename::String)
     ljh = LJHFile(filename)
-    time = Array(Uint64, ljh.nrec)
-    data = Array(Uint16, ljh.nsamp, ljh.nrec)
-    fileRecords(ljh,ljh.nrec, time,data)
+    [d for (d,t) in ljh]
     close(ljh.str)
-    vec(data)
+    data
 end
 
-function fileData(ljh::LJHFile)
-    time = Array(Uint64, ljh.nrec)
-    data = Array(Uint16, ljh.nsamp, ljh.nrec)
-    fileRecords(ljh,ljh.nrec, time,data)
-    close(ljh.str)
-    vec(data)
-end        
+fileData(ljh::LJHFile) = [d for (d,t) in ljh]
+        
 
 
 
