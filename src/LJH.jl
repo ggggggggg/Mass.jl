@@ -1,6 +1,6 @@
 module LJH
 
-export LJHFile
+export LJHFile, update_num_records
 
 # LJH file header information
 immutable LJHHeader
@@ -43,7 +43,7 @@ type LJHFile
 end
 function update_num_records(f::LJHFile)
     datalen = stat(f.name).size - f.header.headerSize
-    f.nrec = div(datalen,ljh.reclength)
+    f.nrec = div(datalen,f.reclength)
 end
 
 

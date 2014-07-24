@@ -6,7 +6,7 @@ module Summarize
 export summarize, PulseSummaries
 using ..MicrocalFiles
 
-using HDF5, ..H5Helper
+using ..H5Helper
 
 # Contain a single channel's complete "pulse summary information"
 # We use these summary data for:
@@ -45,18 +45,11 @@ type PulseSummaries
     end
 end
 
-
-
-
-
-
 # Generate the HDF5 summary for an LJH file by filename
 summarize(filename::String) = summarize(MicrocalFiles.LJHFile(filename))
 
-
-
 function summarize(file::LJHFile)
-        hdf5name = hdf5_name_from_ljh_name(file.name)
+    hdf5name = hdf5_name_from_ljh_name(file.name)
     println("We are about to summarize file into '$hdf5name'")
     if isreadable(hdf5name)
         h5file = h5open(hdf5name, "r+")
@@ -64,31 +57,63 @@ function summarize(file::LJHFile)
         h5file = h5open(hdf5name, "w")
     end
     grpname=string("chan$(file.channum)")
-    h5grp = g_create_or_open(h5file, grpname)
+    h5grp = require_group(h5file, grpname)
     summarize(f, h5grp)
     close(h5file)
 end
 
 # Generate the HDF5 summary for an LJH file given an open LJHFile objects
-function summarize(file::MicrocalFiles.LJHFile, h5grp::HDF5Group)
+function summarize(file::LJHFile, h5grp::HDF5Group)
 
     # Store basic information
-    a_update(h5grp, "npulses", file.nrec)
-    a_update(h5grp, "nsamples", file.nsamp)
-    a_update(h5grp, "npresamples", file.npre)
-    a_update(h5grp, "frametime", file.dt)
-    a_update(h5grp, "rawname", file.name)
+    a_require(h5grp, "npulses", file.nrec)
+    a_require(h5grp, "nsamples", file.nsamp)
+    a_require(h5grp, "npresamples", file.npre)
+    a_require(h5grp, "frametime", file.dt)
+    a_require(h5grp, "rawname", file.name)
 
     summary = compute_summary(file)
 
-    summgrp = g_create_or_open(h5grp,"summary")
+    summgrp = g_require(h5grp,"summary")
     for field in names(summary)
         d_update(summgrp, string(field), getfield(summary, field))
-#         summgrp[string(field)] = getfield(summary, field)
         println(string("Updating HDF5 with $grpname/summary/", field))
     end
 end
 
+function summarize_flow(file::LJHFile)
+    hdf5name = hdf5_name_from_ljh_name(file.name)
+    println("We are about to summarize_flow file into '$hdf5name'")
+    if isreadable(hdf5name)
+        # h5file = h5open(hdf5name, "r+")
+        h5file = h5open(hdf5name, "w")
+    else
+        h5file = h5open(hdf5name, "w")
+    end
+    grpname=string("chan$(file.channum)")
+    h5grp = g_require(h5file, grpname)
+    summarize_flow(file, h5grp)
+    close(h5file)
+end
+function summarize_flow(file::LJHFile, h5grp::HDF5Group)
+    a_require(h5grp, "nsamples", file.nsamp)
+    a_require(h5grp, "npresamples", file.npre)
+    a_require(h5grp, "frametime", file.dt)
+    a_require(h5grp, "rawname", file.name)
+    @show old_npulses = a_read(h5grp, "npulses",0)
+    MicrocalFiles.update_num_records(file)
+    new_npulses = file.nrec
+    if new_npulses>old_npulses
+        summary = compute_summary(file, old_npulses+1:new_npulses)
+        print("completd summary for $(old_npulses+1:new_npulses)")
+        summgrp = g_require(h5grp,"summary")
+        for field in names(summary)
+            @show d_update(summgrp, string(field), getfield(summary, field), old_npulses+1:new_npulses)
+            println("Updating HDF5 with $grpname/summary/$(string(field)), range $(old_npulses+1:new_npulses)")
+        end
+        a_update(h5grp, "npulses", new_npulses)   
+    end 
+end
 
 
 compute_summary(filename::String) = compute_summary(microcal_open(filename))
@@ -96,11 +121,12 @@ compute_summary(filename::String) = compute_summary(microcal_open(filename))
 # Compute the per-pulse data summary. This function returns a PulseSummaries
 # object given an open LJHFile object. It does not know anything about HDF5
 # files.
-function compute_summary(file::MicrocalFiles.LJHFile)
-    summary = PulseSummaries(file.nrec)
+compute_summary(file::LJHFile) = compute_summary(file, 1:length(file))
+function compute_summary(file::LJHFile, r::Range)
+    summary = PulseSummaries(length(r))
     Npre, Npost = file.npre+2, file.nsamp-(file.npre+2)
     post_peak_deriv_vect = zeros(Float64, Npost)
-    for (p, (data, timestamp)) in enumerate(file)
+    for (p, (data, timestamp)) in enumerate(file[r])
         # Pretrigger computation first
         s = s2 = 0.0
         for j = 1:Npre
