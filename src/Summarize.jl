@@ -108,8 +108,8 @@ function summarize_flow(file::LJHFile, h5grp::HDF5Group)
         print("completd summary for $(old_npulses+1:new_npulses)")
         summgrp = g_require(h5grp,"summary")
         for field in names(summary)
-            @show d_update(summgrp, string(field), getfield(summary, field), old_npulses+1:new_npulses)
-            println("Updating HDF5 with $grpname/summary/$(string(field)), range $(old_npulses+1:new_npulses)")
+            @show d_extend(summgrp, string(field), getfield(summary, field), old_npulses+1:new_npulses)
+            println("Updating HDF5 with $(name(summgrp))/$(string(field)), range $(old_npulses+1:new_npulses)")
         end
         a_update(h5grp, "npulses", new_npulses)   
     end 

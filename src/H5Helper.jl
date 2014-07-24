@@ -1,6 +1,6 @@
 module H5Helper
 using HDF5
-export g_require, d_update, d_extend, a_update, a_require, d_require, hdf5_name_from_ljh_name, h5open, a_read, close, HDF5Group, HDF5File
+
 # there are three relevant things in an HDF5 file
 # g_* deals with groups, d_* deals with datasets, a_* deals with atttributes
 # groups contain other object, they are like folders
@@ -59,5 +59,9 @@ function hdf5_name_from_ljh_name(ljhname::String)
     m = match(r"_chan\d+", path)
     path = string(path[1:m.offset-1], "_mass.hdf5")
 end
+
+export g_require, d_update, d_extend, a_update, a_require, d_require, hdf5_name_from_ljh_name, h5open, 
+       a_read, close, HDF5Group, HDF5File, name 
+
 end # endmodule
 
