@@ -96,26 +96,23 @@ function summarize_flow(file::LJHFile, new=false)
     close(h5file)
 end
 function summarize_flow(file::LJHFile, h5grp::HDF5Group)
-    debug(names(attrs(h5grp)))
     a_require(h5grp, "nsamples", file.nsamp)
     a_require(h5grp, "npresamples", file.npre)
     a_require(h5grp, "frametime", file.dt)
     a_require(h5grp, "rawname", file.name)
-    debug(names(attrs(h5grp)))
-    @show old_npulses = a_read(h5grp, "npulses",0)
+    old_npulses = a_read(h5grp, "npulses",0)
     # MicrocalFiles.update_num_records(file)
-    @show new_npulses = file.nrec
+    new_npulses = file.nrec
     info(name(h5grp), " summarizing ", old_npulses+1:new_npulses)
     if new_npulses>old_npulses
-        @time summary = compute_summary(file, old_npulses+1:new_npulses)
-        debug("completd summary for $(old_npulses+1:new_npulses)")
+        summary = compute_summary(file, old_npulses+1:new_npulses)
+        info("completed summary for $(old_npulses+1:new_npulses)")
         summgrp = g_require(h5grp,"summary")
         for field in names(summary)
             d_extend(summgrp, string(field), getfield(summary, field), old_npulses+1:new_npulses)
             debug("Updating HDF5 with $(name(summgrp))/$(string(field)), range $(old_npulses+1:new_npulses)")
         end
-        @show a_update(h5grp, "npulses", new_npulses)
-        warn("npulses=",a_read(h5grp, "npulses"))   
+        a_update(h5grp, "npulses", new_npulses)
     end 
 end
 
@@ -133,21 +130,21 @@ function compute_summary(file::LJHFile, r::Range)
     for (p, (data, timestamp)) in enumerate(file[r])
         # Pretrigger computation first
         s = s2 = 0.0
-        @simd for j = 1:Npre
-            @inbounds d = data[j]
+        for j = 1:Npre
+            d = data[j]
             s += d
             s2 += d*d
         end
         ptm = s/Npre
-        @inbounds summary.pretrig_mean[p] = ptm
-        @inbounds summary.pretrig_rms[p] = sqrt(s2/Npre - ptm*ptm)
+        summary.pretrig_mean[p] = ptm
+        summary.pretrig_rms[p] = sqrt(s2/Npre - ptm*ptm)
 
         # Now post-trigger calculations
         s = s2 = 0.0
         peak_idx = 0
         peak_val = uint16(0)
-        @simd for j = Npre+1:file.nsamp
-            @inbounds d = data[j]
+        for j = Npre+1:file.nsamp
+            d = data[j]
             if d > peak_val 
                 peak_idx, peak_val = j, d
             end

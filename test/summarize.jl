@@ -1,3 +1,6 @@
+module SummarizeTest
+
+
 using Mass, Logging
 Logging.configure(level=DEBUG)
 
@@ -11,3 +14,4 @@ f.nrec = div(f.nrec,2)
 @show Mass.MicrocalFiles.update_num_records(f)
 @time o2=Mass.Summarize.summarize_flow(f)
 @time o2=Mass.Summarize.summarize_flow(f)
+end
