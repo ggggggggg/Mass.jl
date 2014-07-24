@@ -6,7 +6,7 @@ module Summarize
 export summarize, PulseSummaries
 using ..MicrocalFiles
 
-using ..H5Helper
+using ..H5Helper, Logging
 
 # Contain a single channel's complete "pulse summary information"
 # We use these summary data for:
@@ -77,16 +77,16 @@ function summarize(file::LJHFile, h5grp::HDF5Group)
     summgrp = g_require(h5grp,"summary")
     for field in names(summary)
         d_update(summgrp, string(field), getfield(summary, field))
-        println(string("Updating HDF5 with $grpname/summary/", field))
+        info("Updating HDF5 with $grpname/summary/", field)
     end
 end
 
-function summarize_flow(file::LJHFile)
+function summarize_flow(file::LJHFile, new=false)
     hdf5name = hdf5_name_from_ljh_name(file.name)
     println("We are about to summarize_flow file into '$hdf5name'")
     if isreadable(hdf5name)
         # h5file = h5open(hdf5name, "r+")
-        h5file = h5open(hdf5name, "w")
+        h5file = h5open(hdf5name, new ? "w" : "r+")
     else
         h5file = h5open(hdf5name, "w")
     end
@@ -96,22 +96,26 @@ function summarize_flow(file::LJHFile)
     close(h5file)
 end
 function summarize_flow(file::LJHFile, h5grp::HDF5Group)
+    debug(names(attrs(h5grp)))
     a_require(h5grp, "nsamples", file.nsamp)
     a_require(h5grp, "npresamples", file.npre)
     a_require(h5grp, "frametime", file.dt)
     a_require(h5grp, "rawname", file.name)
+    debug(names(attrs(h5grp)))
     @show old_npulses = a_read(h5grp, "npulses",0)
-    MicrocalFiles.update_num_records(file)
-    new_npulses = file.nrec
+    # MicrocalFiles.update_num_records(file)
+    @show new_npulses = file.nrec
+    info(name(h5grp), " summarizing ", old_npulses+1:new_npulses)
     if new_npulses>old_npulses
-        summary = compute_summary(file, old_npulses+1:new_npulses)
-        print("completd summary for $(old_npulses+1:new_npulses)")
+        @time summary = compute_summary(file, old_npulses+1:new_npulses)
+        debug("completd summary for $(old_npulses+1:new_npulses)")
         summgrp = g_require(h5grp,"summary")
         for field in names(summary)
-            @show d_extend(summgrp, string(field), getfield(summary, field), old_npulses+1:new_npulses)
-            println("Updating HDF5 with $(name(summgrp))/$(string(field)), range $(old_npulses+1:new_npulses)")
+            d_extend(summgrp, string(field), getfield(summary, field), old_npulses+1:new_npulses)
+            debug("Updating HDF5 with $(name(summgrp))/$(string(field)), range $(old_npulses+1:new_npulses)")
         end
-        a_update(h5grp, "npulses", new_npulses)   
+        @show a_update(h5grp, "npulses", new_npulses)
+        warn("npulses=",a_read(h5grp, "npulses"))   
     end 
 end
 
@@ -129,21 +133,21 @@ function compute_summary(file::LJHFile, r::Range)
     for (p, (data, timestamp)) in enumerate(file[r])
         # Pretrigger computation first
         s = s2 = 0.0
-        for j = 1:Npre
-            d = data[j]
+        @simd for j = 1:Npre
+            @inbounds d = data[j]
             s += d
             s2 += d*d
         end
         ptm = s/Npre
-        summary.pretrig_mean[p] = ptm
-        summary.pretrig_rms[p] = sqrt(s2/Npre - ptm*ptm)
+        @inbounds summary.pretrig_mean[p] = ptm
+        @inbounds summary.pretrig_rms[p] = sqrt(s2/Npre - ptm*ptm)
 
         # Now post-trigger calculations
         s = s2 = 0.0
         peak_idx = 0
         peak_val = uint16(0)
-        for j = Npre+1:file.nsamp
-            d = data[j]
+        @simd for j = Npre+1:file.nsamp
+            @inbounds d = data[j]
             if d > peak_val 
                 peak_idx, peak_val = j, d
             end

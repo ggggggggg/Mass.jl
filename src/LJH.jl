@@ -59,9 +59,8 @@ LJHSlice{T<:AbstractArray}(ljhfile::LJHFile, slice::T) = LJHSlice{T}(ljhfile, sl
 
 
 function Base.show(io::IO, f::LJHFile)
-    print(io, "LJHFile channel $(f.channum)\n")   
+    print(io, "LJHFile channel $(f.channum): $(f.nrec) records with $(f.npre) presamples and $(f.nsamp) samples each\n")   
     print(io, f.name*"\n")
-    print(io, "$(f.nrec) records with $(f.npre) presamples and $(f.nsamp) samples each\n")
 end
 
 

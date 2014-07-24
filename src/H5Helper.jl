@@ -39,7 +39,7 @@ end
 # a_update will create or replace and existing attribute with value
 function a_update(parent::HDF5Group,name::String,value)
     if exists(attrs(parent), name)
-    	a_read(parent, name) == value && return value
+    	a_read(parent, name) == value && (return value)
     	a_delete(parent, name)
 	end
     attrs(parent)[name] = value
@@ -60,8 +60,11 @@ function hdf5_name_from_ljh_name(ljhname::String)
     path = string(path[1:m.offset-1], "_mass.hdf5")
 end
 
-export g_require, d_update, d_extend, a_update, a_require, d_require, hdf5_name_from_ljh_name, h5open, 
-       a_read, close, HDF5Group, HDF5File, name 
+export g_require, # group stuff
+       d_update, d_extend, d_require, #dataset stuff
+       a_update, a_require, a_read, # attribute stuff
+       hdf5_name_from_ljh_name, h5open, 
+       close, HDF5Group, HDF5File, name, attrs, names
 
 end # endmodule
 
