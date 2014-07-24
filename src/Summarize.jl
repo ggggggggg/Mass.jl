@@ -110,12 +110,13 @@ function summarize_flow(file::LJHFile, h5grp::HDF5Group)
         summgrp = g_require(h5grp,"summary")
         for field in names(summary)
             d_extend(summgrp, string(field), getfield(summary, field), old_npulses+1:new_npulses)
-            debug("Updating HDF5 with $(name(summgrp))/$(string(field)), range $(old_npulses+1:new_npulses)")
+            # debug("Updating HDF5 with $(name(summgrp))/$(string(field)), range $(old_npulses+1:new_npulses)")
         end
         a_update(h5grp, "npulses", new_npulses)
     end 
 end
 
+summarize_step
 
 compute_summary(filename::String) = compute_summary(microcal_open(filename))
 
