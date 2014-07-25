@@ -1,16 +1,19 @@
 include("H5Helper.jl")
-using H5Helper
+using H5Helper, Logging
+Logging.configure(level=DEBUG)
 
-function dostep(h5grp::HDF5Group, func, a_inputs, d_inputs, a_outputs, d_outputs)
-    @show input_lengths = [length(h5grp[name]) for name in d_inputs]
-    @show output_lengths = [H5Helper.exists(h5grp, name) ? length(h5grp[name]) : 0 for name in d_outputs]
-    @show s,f = maximum(output_lengths)+1,minimum(input_lengths)
+
+function dostep(h5grp::HDF5Group, func::Symbol, a_inputs, d_inputs, a_outputs, d_outputs)
+    input_lengths = [length(h5grp[name]) for name in d_inputs]
+    output_lengths = [H5Helper.exists(h5grp, name) ? length(h5grp[name]) : 0 for name in d_outputs]
+    s,f = maximum(output_lengths)+1,minimum(input_lengths)
+    info("dostep ", func, " on $(name(h5grp))[$s:$f] $a_inputs and $d_inputs going to $a_outputs and $d_outputs")
     s<f || return
-    @show a_args = [a_read(h5grp,name) for name in a_inputs]
-    @show d_args = [h5grp[name][s:f] for name in d_inputs]
+    a_args = [a_read(h5grp,name) for name in a_inputs]
+    d_args = [h5grp[name][s:f] for name in d_inputs]
 
-    @show rets = func(a_args..., d_args...)
-    @show j=1
+    rets = eval(func)(a_args..., d_args...)
+    j=1
     for name in a_outputs
         @show a_update(h5grp, name, rets[j])
         @show j+=1
@@ -35,6 +38,6 @@ function f(c,a,b)
 	(a.*b.+sum(c),)
 end
 
-@show dostep(g,f, ["c"], ["a", "b"], [], ["d"])
+@show dostep(g,:f, ["c"], ["a", "b"], [], ["d"])
 
 g["d"]
