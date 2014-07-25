@@ -23,7 +23,10 @@ function place_outs(h5grp, s::Step, r::UnitRange, outs)
     for j in 1:length(s.a_outs) a_update(h5grp, s.a_outs[j], outs[j]) end
     for j in length(s.a_outs)+1:length(s.a_outs) d_extend(h5grp, d_outs[j], outs[j], r) end
 end
-dostep(h5grp, s::Step) = (r = range(h5grp,s);place_outs(h5grp, s, r, calc_outs(h5grp, s, r)))
+function dostep(h5grp, s::Step)
+    r = range(h5grp,s)
+    place_outs(h5grp, s, r, calc_outs(h5grp, s, r))
+end
 
 
 ljh=microcal_open("/Volumes/Drobo/exafs_data/20140719_ferrioxalate_pump_probe/20140719_ferrioxalate_pump_probe_chan1.ljh")
