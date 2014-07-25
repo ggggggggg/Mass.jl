@@ -116,8 +116,6 @@ function summarize_flow(file::LJHFile, h5grp::HDF5Group)
     end 
 end
 
-summarize_step
-
 compute_summary(filename::String) = compute_summary(microcal_open(filename))
 
 # Compute the per-pulse data summary. This function returns a PulseSummaries
