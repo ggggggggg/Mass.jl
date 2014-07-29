@@ -6,7 +6,7 @@ module Summarize
 export summarize, PulseSummaries
 using ..MicrocalFiles
 
-using ..H5Helper, Logging
+using ..H5Flow, Logging
 
 # Contain a single channel's complete "pulse summary information"
 # We use these summary data for:

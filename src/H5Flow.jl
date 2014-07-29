@@ -1,5 +1,5 @@
-module H5Helper
-using HDF5
+module H5Flow
+using HDF5, Logging
 
 # there are three relevant things in an HDF5 file
 # g_* deals with groups, d_* deals with datasets, a_* deals with atttributes
@@ -60,11 +60,55 @@ function hdf5_name_from_ljh_name(ljhname::String)
     path = string(path[1:m.offset-1], "_mass.hdf5")
 end
 
+immutable Step
+    func::Function
+    a_ins::(UTF8String...) #attribute inputs
+    d_ins::(UTF8String...) #dataset inputs
+    a_outs::(UTF8String...) #attribute outputs
+    d_outs::(UTF8String...) #dataset outputs
+    Step(func,a,b,c,d) = new(func, tupleize(a), tupleize(b), tupleize(c), tupleize(d))
+end
+Step(func::String,a,b,c,d,m::Module=Main) = Step(symbol(func),a,b,c,d,m)
+Step(func::Symbol,a,b,c,d,m::Module=Main) = Step(getfield(m, func),a,b,c,d)
+==(a::Step, b::Step) = all([getfield(a,name)==getfield(b,name) for name in names(a)])
+tupleize(x::String) = (x,)
+tupleize(x) = tuple(x...)
+input_lengths(h5grp, s::Step) = [length(h5grp[name]) for name in s.d_ins]
+output_lengths(h5grp, s::Step) = [exists(h5grp, name) ? length(h5grp[name]) : 0 for name in s.d_outs]
+range(h5grp, s::Step) = maximum(input_lengths(h5grp, s))+1:minimum(output_lengths(h5grp,s))
+a_args(h5grp, s::Step) = [a_read(h5grp,name) for name in s.a_ins]
+d_args(h5grp, s::Step, r::UnitRange) = [h5grp[name][r] for name in s.d_ins]
+args(h5grp, s::Step, r::UnitRange) = tuple(a_args(h5grp, s)..., d_args(h5grp, s, r)...)
+calc_outs(h5grp, s::Step, r::UnitRange) = s.func(args(h5grp, s, r)...)
+function place_outs(h5grp, s::Step, r::UnitRange, outs) 
+    for j in 1:length(s.a_outs) a_update(h5grp, s.a_outs[j], outs[j]) end
+    for j in length(s.a_outs)+1:length(s.a_outs) d_extend(h5grp, d_outs[j], outs[j], r) end
+end
+function dostep(h5grp, s::Step)
+    r = range(h5grp,s)
+    info(name(h5grp), " ",r, " ", s)
+    place_outs(h5grp, s, r, calc_outs(h5grp, s, r))
+end
+h5step_write(h5grp, s::Step) = for name in names(s) a_require(h5grp, "$name", repr(getfield(s,name))) end
+function h5step_read(h5grp,m::Module=Main)
+    data = [tupleize([convert(UTF8String,m.match) for m in collect(eachmatch(r"[/0-9a-zA-Z_]+", a_read(h5grp, "$name")))]) for name in names(Step)]
+    Step(getfield(m, symbol(data[1][1])), data[2:end]...)   
+end
+h5step_add(h5grp, s::Step, n::Integer) = h5step_write(g_require(g_require(h5grp, "steps"),"$n"), s)
+function h5steps(h5grp)
+    exists(h5grp, "steps") || return Step[]
+    g=g_require(h5grp, "steps")
+    nums = sort([int(name) for name in names(g)])
+    Step[h5step_read(g["$n"]) for n in nums]
+end
+update!(h5grp::HDF5Group) = [(println(s);dostep(h5grp, s)) for s in h5steps(h5grp)]
+
 export g_require, # group stuff
        d_update, d_extend, d_require, #dataset stuff
        a_update, a_require, a_read, # attribute stuff
        hdf5_name_from_ljh_name, h5open, 
-       close, HDF5Group, HDF5File, name, attrs, names
+       close, HDF5Group, HDF5File, name, attrs, names,
+       Step, update!, h5steps, h5step_add
 
 end # endmodule
 

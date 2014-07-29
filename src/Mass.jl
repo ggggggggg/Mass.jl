@@ -1,9 +1,9 @@
 
 module Mass
 include("MicrocalFiles.jl")
-include("H5Helper.jl")
+include("H5Flow.jl")
 include("Summarize.jl")
-using .Summarize, .MicrocalFiles, .H5Helper
+using .Summarize, .MicrocalFiles, .H5Flow
 export microcal_open
 
 
