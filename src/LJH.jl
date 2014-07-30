@@ -58,6 +58,8 @@ end
 LJHSlice{T<:AbstractArray}(ljhfile::LJHFile, slice::T) = LJHSlice{T}(ljhfile, slice)
 
 
+
+
 function Base.show(io::IO, f::LJHFile)
     print(io, "LJHFile channel $(f.channum): $(f.nrec) records with $(f.npre) presamples and $(f.nsamp) samples each\n")   
     print(io, f.name*"\n")
@@ -186,6 +188,59 @@ end
 
 fileData(ljh::LJHFile) = [d for (d,t) in ljh]
         
+
+
+type LJHGroup
+    ljhfiles::(LJHFile...)
+    lengths::(Int...)
+end
+LJHGroup(x::(LJHFile...)) = LJHGroup(x, tuple([length(f) for f in x]...))
+LJHGroup(x) = LJHGroup(tuple([LJHFile(f) for f in x]...))
+Base.length(g::LJHGroup) = sum(g.lengths)
+function update_num_records(g::LJHGroup)
+    update_num_records(last(g.ljhfiles))
+    g.lengths = tuple([length(f) for f in x]...)
+end
+function filenum_pulsenum(g::LJHGroup, j::Int)
+    for (i,len) in enumerate(g.lengths)
+        j <= len ? (return i,j) : (j-=len)
+    end
+end
+function Base.getindex(g::LJHGroup, i::Int)
+    filenum, pulsenum = filenum_pulsenum(g,i)
+    g.ljhfiles[filenum][pulsenum]
+end
+Base.getindex(g::LJHGroup, slice::AbstractArray) = LJHGroupSlice(g, slice)
+Base.endof(g::LJHGroup) = length(g)
+immutable LJHGroupSlice{T<:AbstractArray}
+    g::LJHGroup
+    slice::T
+    function LJHGroupSlice(ljhgroup, slice)
+        maximum(slice)<=length(ljhgroup) || error("$(maximum(slice)) is greater than nrec=$(ljhfile.nrec) in $ljhfile")
+        new(ljhgroup, slice)
+    end
+end
+Base.length(g::LJHGroupSlice) = length(g.slice)
+Base.endof(g::LJHGroupSlice) = length(g.slice)
+LJHGroupSlice{T<:AbstractArray}(ljhfile::LJHGroup, slice::T) = LJHGroupSlice{T}(ljhfile, slice)
+function Base.start{T<:UnitRange}(g::LJHGroupSlice{T})
+    for f in g.g.ljhfiles seekto(f,1) end
+    filenum, pulsenum = filenum_pulsenum(g.g, first(g.slice))
+    donefilenum, donepulsenum = filenum_pulsenum(g.g, last(g.slice))
+    seekto(g.g.ljhfiles[filenum], pulsenum)
+    return (filenum, pulsenum, donefilenum, donepulsenum)
+end
+function Base.next{T<:UnitRange}(g::LJHGroupSlice{T}, state)
+    filenum, pulsenum, donefilenum, donepulsenum = state
+    data = pop!(g.g.ljhfiles[filenum])
+    pulsenum+=1
+    pulsenum > g.g.lengths[filenum] && (pulsenum-=g.g.lengths[filenum];filenum+=1)
+    data, (filenum, pulsenum, donefilenum, donepulsenum)
+end
+function Base.done{T<:UnitRange}(g::LJHGroupSlice{T}, state)
+    filenum, pulsenum, donefilenum, donepulsenum = state
+    filenum>donefilenum || pulsenum > donepulsenum
+end
 
 
 

@@ -16,7 +16,7 @@ function ptm_correction(params, ptm, ph)
     ph += (ptm.-ptm_offset).*ph
     return (ph,)
 end
-s = Step("ptm_correction", "pretrigger_mean_correction", ["summary/pretrig_mean","summary/pulse_rms"], (), "pulse_rms_dc")
+s = Step(ptm_correction, "pretrigger_mean_correction", ["summary/pretrig_mean","summary/pulse_rms"], (), "pulse_rms_dc")
 h5step_add(g,s, 10)
 update!(g)
 
