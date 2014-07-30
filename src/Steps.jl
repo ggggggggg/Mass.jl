@@ -1,4 +1,4 @@
-using Mass, Mass.H5Flow
+using Mass, H5Flow
 
 
 ljh=microcal_open("/Volumes/Drobo/exafs_data/20140719_ferrioxalate_pump_probe/20140719_ferrioxalate_pump_probe_chan1.ljh")
