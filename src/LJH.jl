@@ -26,7 +26,7 @@ type LJHFile
     nsamp            ::Int64         # number of sample per record
     reclength        ::Int64         # record length (bytes) including timestamp
     channum          ::Uint16        # channel number  
-    function LJHFile(name::ASCIIString)
+    function LJHFile(name::String)
         hd = readLJHHeader(name)
         channum = hd.channum
         dt = hd.timebase
@@ -209,7 +209,7 @@ channel(g::LJHGroup) = uniquefieldvalue(g, :channum)
 record_nsamples(g::LJHGroup) = uniquefieldvalue(g, :nsamp)
 pretrig_nsamples(g::LJHGroup) = uniquefieldvalue(g, :npre)
 timebase(g::LJHGroup) = uniquefieldvalue(g, :dt)
-filenames(g::LJHGroup) = fieldvalue(g, :name)
+filenames(g::LJHGroup) = convert(Array{UTF8String},fieldvalue(g, :name))
 function update_num_records(g::LJHGroup)
     update_num_records(last(g.ljhfiles))
     g.lengths = tuple([length(f) for f in x]...)
@@ -233,7 +233,7 @@ immutable LJHGroupSlice{T<:AbstractArray}
     g::LJHGroup
     slice::T
     function LJHGroupSlice(ljhgroup, slice)
-        maximum(slice)<=length(ljhgroup) || error("$(maximum(slice)) is greater than nrec=$(ljhfile.nrec) in $ljhfile")
+        maximum(slice)<=length(ljhgroup) || error("$(maximum(slice)) is greater than nrec=$(length(ljhgroup)) in $ljhgroup")
         new(ljhgroup, slice)
     end
 end

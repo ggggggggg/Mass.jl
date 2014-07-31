@@ -39,8 +39,10 @@ end
 # a_update will create or replace and existing attribute with value
 function a_update(parent::HDF5Group,name::String,value)
     if exists(attrs(parent), name)
-    	a_read(parent, name) == value && (return value)
+        old_value = a_read(parent, name)
+    	old_value == value && (return value)
     	a_delete(parent, name)
+        info("in $parent updating $name from $old_value to $value")
 	end
     attrs(parent)[name] = value
 end
@@ -73,21 +75,29 @@ Step(func::Symbol,a,b,c,d,m::Module=Main) = Step(getfield(m, func),a,b,c,d)
 ==(a::Step, b::Step) = all([getfield(a,name)==getfield(b,name) for name in names(a)])
 tupleize(x::String) = (x,)
 tupleize(x) = tuple(x...)
-input_lengths(h5grp, s::Step) = [size(h5grp[name])[end] for name in s.d_ins]
-output_lengths(h5grp, s::Step) = [exists(h5grp, name) ? size(h5grp[name])[end] : 0 for name in s.d_outs]
-range(h5grp, s::Step) = maximum(input_lengths(h5grp, s))+1:minimum(output_lengths(h5grp,s))
+input_lengths(h5grp, s::Step) = [[size(h5grp[name])[end] for name in s.d_ins], a_read(h5grp, "npulses", 0)]
+# input lengths is a vector of the lengths of all the input datasets and "npulses" (with a default of 0 if it doesn't exist)
+output_lengths(h5grp, s::Step) = [[exists(h5grp, name) ? size(h5grp[name])[end] : 0 for name in s.d_outs],0]
+range(h5grp, s::Step) = minimum(output_lengths(h5grp, s))+1:minimum(input_lengths(h5grp,s))
 a_args(h5grp, s::Step) = [a_read(h5grp,name) for name in s.a_ins]
 d_args(h5grp, s::Step, r::UnitRange) = [h5grp[name][r] for name in s.d_ins]
 args(h5grp, s::Step, r::UnitRange) = tuple(a_args(h5grp, s)..., d_args(h5grp, s, r)...)
-calc_outs(h5grp, s::Step, r::UnitRange) = s.func(args(h5grp, s, r)...)
+calc_outs(h5grp, s::Step, r::UnitRange) = s.func(r, args(h5grp, s, r)...)
 function place_outs(h5grp, s::Step, r::UnitRange, outs) 
-    for j in 1:length(s.a_outs) a_update(h5grp, s.a_outs[j], outs[j]) end
-    for j in length(s.a_outs)+1:length(s.a_outs) d_extend(h5grp, d_outs[j], outs[j], r) end
+    debug("place_outs")
+    for j in 1:length(s.a_outs) 
+        debug("a_update", s.a_outs[j]," ", typeof(outs[j]))
+        a_update(h5grp, s.a_outs[j], outs[j]) end
+    for j in length(s.a_outs)+1:length(s.d_outs) 
+        debug("d_extend", s.d_outs[j]," ", typeof(outs[j])," ", r)
+        d_extend(h5grp, s.d_outs[j], outs[j], r) end
 end
 function dostep(h5grp, s::Step)
     r = range(h5grp,s)
     info(name(h5grp), " ",r, " ", s)
-    place_outs(h5grp, s, r, calc_outs(h5grp, s, r))
+    outs = calc_outs(h5grp, s, r)
+    debug(typeof(outs))
+    place_outs(h5grp, s, r, outs)
 end
 h5step_write(h5grp, s::Step) = for name in names(s) a_require(h5grp, "$name", repr(getfield(s,name))) end
 function h5step_read(h5grp,m::Module=Main)

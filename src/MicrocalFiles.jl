@@ -26,7 +26,7 @@ function ljhbasename(ljhname::String)
     m = match(r"_chan\d+", bname)
     m == nothing ? bname : bname[1:m.offset-1]
 end
-hdf5_name_from_ljh(ljhgroup::LJHGroup) = hdf5_name_from_ljh(fnames(ljhgroup)...)
+hdf5_name_from_ljh(ljhgroup::LJHGroup) = hdf5_name_from_ljh(filenames(ljhgroup)...)
 function hdf5_name_from_ljh(ljhnames::String...)
 	dir = dirname(ljhnames[1])
 	fname = prod([ljhbasename(f) for f in ljhnames])
