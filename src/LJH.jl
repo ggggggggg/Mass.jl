@@ -1,6 +1,6 @@
 module LJH
 
-export LJHGroup, LJHFile, update_num_records, channel, record_nsamples, pretrig_nsamples, timebase, filenames
+export LJHGroup, LJHFile, update_num_records, channel, record_nsamples, pretrig_nsamples, frametime, filenames, lengths
 
 # LJH file header information
 immutable LJHHeader
@@ -192,9 +192,9 @@ fileData(ljh::LJHFile) = [d for (d,t) in ljh]
 
 type LJHGroup
     ljhfiles::(LJHFile...)
-    lengths::(Int...)
+    lengths::Vector{Int}
 end
-LJHGroup(x::(LJHFile...)) = LJHGroup(x, tuple([length(f) for f in x]...))
+LJHGroup(x::(LJHFile...)) = LJHGroup(x, Int[int(length(f)) for f in x])
 LJHGroup(x) = LJHGroup(tuple([LJHFile(f) for f in x]...))
 LJHGroup(x::LJHFile) = LJHGroup(tuple(x))
 LJHGroup(x::String) = LJHGroup(LJHFile(x))
@@ -208,11 +208,12 @@ end
 channel(g::LJHGroup) = uniquefieldvalue(g, :channum)
 record_nsamples(g::LJHGroup) = uniquefieldvalue(g, :nsamp)
 pretrig_nsamples(g::LJHGroup) = uniquefieldvalue(g, :npre)
-timebase(g::LJHGroup) = uniquefieldvalue(g, :dt)
+frametime(g::LJHGroup) = uniquefieldvalue(g, :dt)
 filenames(g::LJHGroup) = convert(Array{UTF8String},fieldvalue(g, :name))
+lengths(g::LJHGroup) = g.lengths
 function update_num_records(g::LJHGroup)
     update_num_records(last(g.ljhfiles))
-    g.lengths = tuple([length(f) for f in x]...)
+    g.lengths = Int[length(f) for f in x]
     for file in g.ljhfiles[1:end-1]
         datalen = stat(file.name).size - file.header.headerSize
         div(datalen, file.recLength) == file.nrec || critical("a ljh file other than the last file in grew in length $g it was $file")

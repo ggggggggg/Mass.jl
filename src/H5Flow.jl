@@ -11,33 +11,33 @@ using HDF5, Logging
 # Create a new or open an existing group within an HDF5 object
 # If you can figure out a native syntax that handles both cases,
 # then we'd prefer to use it.
-function g_require(parent::Union(HDF5File,HDF5Group), name::String)
+function g_require(parent::Union(HDF5File,HDF5Group), name::ASCIIString)
     exists(parent, name) ? (return parent[name]) : g_create(parent, name)
 end
 # Create a new or update an existing dataset within an HDF5 object
 # extends the dataset if required
-function d_extend(parent::HDF5Group, name::String, value::Vector, range::UnitRange)
+function d_extend(parent::HDF5Group, name::ASCIIString, value::Vector, range::UnitRange)
 	d = d_require(parent, name, value)
 	set_dims!(parent[name], (maximum(range),))
 	d[range] = value
 	d
 end
-d_extend(parent::HDF5Group, name::String, value::Vector) = d_extend(parent, name, value, endof(parent[name])+1:endof(parent[name])+length(value))
-d_update(parent::HDF5Group, name::String, value::Vector) = d_extend(parent, name, value, 1:endof(value))
+d_extend(parent::HDF5Group, name::ASCIIString, value::Vector) = d_extend(parent, name, value, endof(parent[name])+1:endof(parent[name])+length(value))
+d_update(parent::HDF5Group, name::ASCIIString, value::Vector) = d_extend(parent, name, value, 1:endof(value))
 function d_require(parent::HDF5Group, name, value::Vector,chunksize = 10000)
 	dims = ((1,), (-1,)) # create a minimum size dataset, zero isn't allowed
 	exists(parent,name) ? parent[name] : d_create(parent, name, eltype(value), dims, "chunk", (chunksize,))
 end
 # Create a new or update an existing attribute within an HDF5 object
 # a_require will create the attribute if it doesn't exist, or assert that the existing attribute is equal to value
-function a_require(parent::HDF5Group,name::String,value)
+function a_require(parent::HDF5Group,name::ASCIIString,value)
     if exists(attrs(parent), name)
     	a_read(parent, name) == value ? (return value) : error("new value $value != existing value $(a_read(parent,name)) for attr $parent[$name]")
 	end
     attrs(parent)[name] = value	
 end
 # a_update will create or replace and existing attribute with value
-function a_update(parent::HDF5Group,name::String,value)
+function a_update(parent::HDF5Group,name::ASCIIString,value)
     if exists(attrs(parent), name)
         old_value = a_read(parent, name)
     	old_value == value && (return value)
@@ -50,7 +50,7 @@ end
 function HDF5.a_read(parent::HDF5Group, name::String, default_value)
 	exists(attrs(parent),name) ? a_read(parent, name) : default_value
 end
-
+allnames(g::Union(HDF5Group, HDF5File)) = (names(g), names(attrs(g)))
 
 # Given an LJH file name, return the HDF5 name
 # Generally, /x/y/z/data_taken_chan1.ljh becomes /x/y/z/data_taken_mass.hdf5
@@ -64,10 +64,10 @@ end
 
 immutable Step
     func::Function
-    a_ins::(UTF8String...) #attribute inputs
-    d_ins::(UTF8String...) #dataset inputs
-    a_outs::(UTF8String...) #attribute outputs
-    d_outs::(UTF8String...) #dataset outputs
+    a_ins::(ASCIIString...) #attribute inputs
+    d_ins::(ASCIIString...) #dataset inputs
+    a_outs::(ASCIIString...) #attribute outputs
+    d_outs::(ASCIIString...) #dataset outputs
     Step(func,a,b,c,d) = new(func, tupleize(a), tupleize(b), tupleize(c), tupleize(d))
 end
 Step(func::String,a,b,c,d,m::Module=Main) = Step(symbol(func),a,b,c,d,m)
@@ -86,7 +86,7 @@ calc_outs(h5grp, s::Step, r::UnitRange) = s.func(r, args(h5grp, s, r)...)
 function place_outs(h5grp, s::Step, r::UnitRange, outs) 
     debug("place_outs")
     for j in 1:length(s.a_outs) 
-        debug("a_update", s.a_outs[j]," ", typeof(outs[j]))
+        debug("a_update(", s.a_outs[j],", ", typeof(outs[j]))
         a_update(h5grp, s.a_outs[j], outs[j]) end
     for j in length(s.a_outs)+1:length(s.d_outs) 
         debug("d_extend", s.d_outs[j]," ", typeof(outs[j])," ", r)
@@ -116,7 +116,7 @@ update!(h5grp::HDF5Group) = [(println(s);dostep(h5grp, s)) for s in h5steps(h5gr
 export g_require, # group stuff
        d_update, d_extend, d_require, #dataset stuff
        a_update, a_require, a_read, # attribute stuff
-       hdf5_name_from_ljh_name, h5open, 
+       hdf5_name_from_ljh_name, h5open, allnames,
        close, HDF5Group, HDF5File, name, attrs, names,
        Step, update!, h5steps, h5step_add
 

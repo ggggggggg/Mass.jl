@@ -1,7 +1,7 @@
-module MicrocalFiles
 include("LJH.jl")
-using .LJH
-export microcal_open, hdf5_name_from_ljh, channel, record_nsamples, pretrig_nsamples, timebase, filenames, LJHFile, LJHGroup
+module MicrocalFiles
+using LJH
+export microcal_open, hdf5_name_from_ljh, channel, record_nsamples, pretrig_nsamples, frametime, filenames, lengths, LJHFile, LJHGroup
 
 # the idea is that all microcal files should support the same interfaces, so you
 # can open any of them with microcal_open
