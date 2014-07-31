@@ -1,6 +1,5 @@
 module MicrocalFilesTest
-using Mass, MicrocalFiles, Base.Test
-
+using Mass, Base.Test
 fname1 = "/a/b/c/a_chan1.ljh"
 fname2 = "/a/b/c/b_chan3.ljh"
 fname3 = "/a/b/otherdir/c_chan3.ljh"
