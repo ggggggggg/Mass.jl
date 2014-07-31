@@ -90,11 +90,18 @@ function place_outs(h5grp, s::Step, r::UnitRange, outs)
     for j in 1:length(s.d_outs) 
         d_extend(h5grp, s.d_outs[j], outs[j+length(s.a_outs)], r) end
 end
-function dostep(h5grp, s::Step)
-    r = range(h5grp,s)
-    info(name(h5grp), " ",r, " ", s)
+dostep(h5grp, s::Step) = dostep(h5grp, s, range(h5grp,s))
+function dostep(h5grp, s::Step, r::UnitRange)
+    starttime = tic()
     outs = calc_outs(h5grp, s, r)
+    elapsed = (tic()-starttime)*1e-9
+    println(name(h5grp), " ",r, " ",elapsed," s, ", s)
     place_outs(h5grp, s, r, outs)
+end
+function dostep(h5grp, s::Step, max_step_size::Int)
+    r = range(h5grp, s)
+    length(r)>max_step_size && (r = first(r):max_step_size-first(r)%max_step_size+first(r))
+    dostep(h5grp, s, r)
 end
 h5step_write(h5grp, s::Step) = for name in names(s) a_require(h5grp, "$name", repr(getfield(s,name))) end
 function h5step_read(h5grp,m::Module=Main)
@@ -116,6 +123,7 @@ function h5steps(h5grp)
     Step[h5step_read(h5grp["steps"]["$n"]) for n in nums] # no check for existing because non empty nums requires existence
 end
 update!(h5grp::HDF5Group) = [dostep(h5grp, s) for s in h5steps(h5grp)]
+update!(h5grp::HDF5Group, m::Int) = [dostep(h5grp, s, m) for s in h5steps(h5grp)]
 
 export g_require, # group stuff
        d_update, d_extend, d_require, #dataset stuff
