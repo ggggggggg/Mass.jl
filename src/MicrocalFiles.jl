@@ -1,7 +1,7 @@
 module MicrocalFiles
 include("LJH.jl")
 using .LJH
-export microcal_open, hdf5_name_from_ljh_name, channel, record_nsamples, pretrig_nsamples, timebase, filenames, LJHFile, LJHGroup
+export microcal_open, hdf5_name_from_ljh, channel, record_nsamples, pretrig_nsamples, timebase, filenames, LJHFile, LJHGroup
 
 # the idea is that all microcal files should support the same interfaces, so you
 # can open any of them with microcal_open
@@ -21,13 +21,18 @@ microcal_open(s) = LJHGroup(s) # for lists of files, I didn't bother to make it 
 
 # Given an LJH file name, return the HDF5 name
 # Generally, /x/y/z/data_taken_chan1.ljh becomes /x/y/z/data_taken_mass.hdf5
-function hdf5_name_from_ljh_name(ljhname::String)
-    dir = dirname(ljhname)
-    base = basename(ljhname)
-    path,suffix = splitext(ljhname)
-    m = match(r"_chan\d+", path)
-    path = string(path[1:m.offset-1], "_mass.hdf5")
+function ljhbasename(ljhname::String)
+    bname,suffix = splitext(basename(ljhname))
+    m = match(r"_chan\d+", bname)
+    m == nothing ? bname : bname[1:m.offset-1]
 end
+hdf5_name_from_ljh(ljhgroup::LJHGroup) = hdf5_name_from_ljh(fnames(ljhgroup)...)
+function hdf5_name_from_ljh(ljhnames::String...)
+	dir = dirname(ljhnames[1])
+	fname = prod([ljhbasename(f) for f in ljhnames])
+	joinpath(dir,hdf5_name_from_ljh(fname))
+end
+hdf5_name_from_ljh(ljhname::String) = joinpath(dirname(ljhname),ljhbasename(ljhname))*"_mass.hdf5"
+hdf5_name_from_ljh(ljh::LJHFile) = hdf5_name_from_ljh(ljh.name)
 
-
-end 
+end # module

@@ -49,7 +49,7 @@ end
 summarize(filename::String) = summarize(MicrocalFiles.LJHFile(filename))
 
 function summarize(file::LJHFile)
-    hdf5name = hdf5_name_from_ljh_name(file.name)
+    hdf5name = hdf5_name_from_ljh(file)
     println("We are about to summarize file into '$hdf5name'")
     if isreadable(hdf5name)
         h5file = h5open(hdf5name, "r+")
@@ -82,7 +82,7 @@ function summarize(file::LJHFile, h5grp::HDF5Group)
 end
 
 function summarize_flow(file::LJHFile, new=false)
-    hdf5name = hdf5_name_from_ljh_name(file.name)
+    hdf5name = hdf5_name_from_ljh(file)
     println("We are about to summarize_flow file into '$hdf5name'")
     if isreadable(hdf5name)
         # h5file = h5open(hdf5name, "r+")
