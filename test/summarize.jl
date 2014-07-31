@@ -1,17 +1,23 @@
-module SummarizeTest
+using Mass
+ljhgroup1=microcal_open("/Volumes/Drobo/exafs_data/20140719_ferrioxalate_pump_probe/20140719_ferrioxalate_pump_probe_chan1.ljh")
+ljhgroup1.ljhfiles[1].nrec = div(ljhgroup1.ljhfiles[1].nrec,2)
+ljhgroup2 = Mass.MicrocalFiles.LJHGroup(ljhgroup1.ljhfiles[1])
 
+h5 = h5open(hdf5_name_from_ljh(ljhgroup2),"w")
+close(h5)
+h5 = h5open(hdf5_name_from_ljh(ljhgroup2),"r+")
 
-using Mass, Logging
-Logging.configure(level=DEBUG)
-
-f=Mass.LJHFile("/Volumes/Drobo/exafs_data/20140719_ferrioxalate_pump_probe/20140719_ferrioxalate_pump_probe_chan1.ljh")
-
-@time o1=Mass.Summarize.compute_summary(f)
-
-f.nrec = div(f.nrec,2)
-
-@time o2=Mass.Summarize.summarize_flow(f, true)
-@show Mass.MicrocalFiles.update_num_records(f)
-@time o2=Mass.Summarize.summarize_flow(f)
-@time o2=Mass.Summarize.summarize_flow(f)
+function ptm_correction(r, params, ptm, ph)
+    ptm_offset, slope = params
+    ph += (ptm.-ptm_offset).*ph
+    return (ph,)
 end
+ptm_correction_step = Step(ptm_correction, "pretrigger_mean_correction", ["pretrig_mean","pulse_rms"], (), "pulse_rms_dc")
+
+g = init_channel(h5, ljhgroup2)
+a_update(g, "pretrigger_mean_correction", [2000.0, 0.1])
+h5step_add(g,summarize_step)
+h5step_add(g, ptm_correction_step)
+@time update!(g)
+@time update!(g)
+

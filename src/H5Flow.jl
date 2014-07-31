@@ -77,26 +77,23 @@ tupleize(x::String) = (x,)
 tupleize(x) = tuple(x...)
 input_lengths(h5grp, s::Step) = [[size(h5grp[name])[end] for name in s.d_ins], a_read(h5grp, "npulses", 0)]
 # input lengths is a vector of the lengths of all the input datasets and "npulses" (with a default of 0 if it doesn't exist)
-output_lengths(h5grp, s::Step) = [[exists(h5grp, name) ? size(h5grp[name])[end] : 0 for name in s.d_outs],0]
+output_lengths(h5grp, s::Step) = length(s.d_outs) == 0 ? [1] : [[exists(h5grp, name) ? size(h5grp[name])[end] : 0 for name in s.d_outs]]
 range(h5grp, s::Step) = minimum(output_lengths(h5grp, s))+1:minimum(input_lengths(h5grp,s))
 a_args(h5grp, s::Step) = [a_read(h5grp,name) for name in s.a_ins]
 d_args(h5grp, s::Step, r::UnitRange) = [h5grp[name][r] for name in s.d_ins]
 args(h5grp, s::Step, r::UnitRange) = tuple(a_args(h5grp, s)..., d_args(h5grp, s, r)...)
 calc_outs(h5grp, s::Step, r::UnitRange) = s.func(r, args(h5grp, s, r)...)
 function place_outs(h5grp, s::Step, r::UnitRange, outs) 
-    debug("place_outs")
+    assert(length(outs) == length(s.a_outs)+length(s.d_outs))
     for j in 1:length(s.a_outs) 
-        debug("a_update(", s.a_outs[j],", ", typeof(outs[j]))
         a_update(h5grp, s.a_outs[j], outs[j]) end
-    for j in length(s.a_outs)+1:length(s.d_outs) 
-        debug("d_extend", s.d_outs[j]," ", typeof(outs[j])," ", r)
-        d_extend(h5grp, s.d_outs[j], outs[j], r) end
+    for j in 1:length(s.d_outs) 
+        d_extend(h5grp, s.d_outs[j], outs[j+length(s.a_outs)], r) end
 end
 function dostep(h5grp, s::Step)
     r = range(h5grp,s)
     info(name(h5grp), " ",r, " ", s)
     outs = calc_outs(h5grp, s, r)
-    debug(typeof(outs))
     place_outs(h5grp, s, r, outs)
 end
 h5step_write(h5grp, s::Step) = for name in names(s) a_require(h5grp, "$name", repr(getfield(s,name))) end
@@ -105,13 +102,20 @@ function h5step_read(h5grp,m::Module=Main)
     Step(getfield(m, symbol(data[1][1])), data[2:end]...)   
 end
 h5step_add(h5grp, s::Step, n::Integer) = h5step_write(g_require(g_require(h5grp, "steps"),"$n"), s)
-function h5steps(h5grp)
-    exists(h5grp, "steps") || return Step[]
-    g=g_require(h5grp, "steps")
-    nums = sort([int(name) for name in names(g)])
-    Step[h5step_read(g["$n"]) for n in nums]
+function h5step_add(h5grp, s::Step)
+    nums = h5stepnumbers(h5grp)
+    n = 10*div(max(nums...,0),10)+10
+    h5step_add(h5grp, s, n)
 end
-update!(h5grp::HDF5Group) = [(println(s);dostep(h5grp, s)) for s in h5steps(h5grp)]
+function h5stepnumbers(h5grp)
+    exists(h5grp, "steps") || return Int[]
+    nums = sort([int(name) for name in names(h5grp["steps"])])
+end
+function h5steps(h5grp)
+    nums = h5stepnumbers(h5grp)
+    Step[h5step_read(h5grp["steps"]["$n"]) for n in nums] # no check for existing because non empty nums requires existence
+end
+update!(h5grp::HDF5Group) = [dostep(h5grp, s) for s in h5steps(h5grp)]
 
 export g_require, # group stuff
        d_update, d_extend, d_require, #dataset stuff
