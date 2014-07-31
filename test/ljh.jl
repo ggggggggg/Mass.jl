@@ -1,7 +1,7 @@
 module LJHTest
 using Mass, Base.Test
-
-ljhgroup = microcal_open(["/Volumes/Drobo/exafs_data/20140719_ferrioxalate_pump_probe/20140719_ferrioxalate_pump_probe_chan$d.ljh" for d in 1:2:5])
+fnames = ["/Volumes/Drobo/exafs_data/20140719_ferrioxalate_pump_probe/20140719_ferrioxalate_pump_probe_chan$d.ljh" for d in 1:2:5]
+ljhgroup = microcal_open(fnames)
 f1,f2,f3 = ljhgroup.ljhfiles
 
 
@@ -27,4 +27,9 @@ singleljhgroup2 = Mass.MicrocalFiles.LJH.LJHGroup(f1)
 @test singleljhgroup[7] == singleljhgroup2[7]
 @test length(singleljhgroup) == length(singleljhgroup2)
 @test [p for p in singleljhgroup[55:734]] == [p for p in f1[55:734]]
+@test filenames(ljhgroup) == fnames
+record_nsamples(ljhgroup)
+pretrig_nsamples(ljhgroup)
+@test_throws ErrorException channel(ljhgroup)
+timebase(ljhgroup)
 end

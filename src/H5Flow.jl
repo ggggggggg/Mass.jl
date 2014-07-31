@@ -73,8 +73,8 @@ Step(func::Symbol,a,b,c,d,m::Module=Main) = Step(getfield(m, func),a,b,c,d)
 ==(a::Step, b::Step) = all([getfield(a,name)==getfield(b,name) for name in names(a)])
 tupleize(x::String) = (x,)
 tupleize(x) = tuple(x...)
-input_lengths(h5grp, s::Step) = [length(h5grp[name]) for name in s.d_ins]
-output_lengths(h5grp, s::Step) = [exists(h5grp, name) ? length(h5grp[name]) : 0 for name in s.d_outs]
+input_lengths(h5grp, s::Step) = [size(h5grp[name])[end] for name in s.d_ins]
+output_lengths(h5grp, s::Step) = [exists(h5grp, name) ? size(h5grp[name])[end] : 0 for name in s.d_outs]
 range(h5grp, s::Step) = maximum(input_lengths(h5grp, s))+1:minimum(output_lengths(h5grp,s))
 a_args(h5grp, s::Step) = [a_read(h5grp,name) for name in s.a_ins]
 d_args(h5grp, s::Step, r::UnitRange) = [h5grp[name][r] for name in s.d_ins]

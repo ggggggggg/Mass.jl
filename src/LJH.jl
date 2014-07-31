@@ -202,7 +202,7 @@ Base.length(g::LJHGroup) = sum(g.lengths)
 fieldvalue(g::LJHGroup, s::Symbol) = unique([getfield(f, s) for f in g.ljhfiles])
 function uniquefieldvalue(g::LJHGroup, s::Symbol) 
     values = fieldvalue(g,s)
-    all(values == first(values)) && return first(values)
+    all(values .== first(values)) && return first(values)
     error("LJHGroup $g should have unique value for $s, instead has multiple values $values")
 end
 channel(g::LJHGroup) = uniquefieldvalue(g, :channum)
