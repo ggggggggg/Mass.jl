@@ -29,13 +29,126 @@ type PulseSummaries
     end
 end
 
-function compute_summary(file::LJHGroup, r::Range)
+function compute_summary(file::LJHFile, r::Range)
+    summary = PulseSummaries(length(r))
+    Npre, Npost = file.npre+2, file.nsamp-(file.npre+2)
+    post_peak_deriv_vect = zeros(Float64, Npost)
+    for (p, (data, timestamp)) in enumerate(file[r])
+        # Pretrigger computation first
+        s = s2 = 0.0
+        for j = 1:Npre
+            d = data[j]
+            s += d
+            s2 += d*d
+        end
+        ptm = s/Npre
+        summary.pretrig_mean[p] = ptm
+        summary.pretrig_rms[p] = sqrt(s2/Npre - ptm*ptm)
+
+        # Now post-trigger calculations
+        s = s2 = 0.0
+        peak_idx = 0
+        peak_val = uint16(0)
+        for j = Npre+1:file.nsamp
+            d = data[j]
+            if d > peak_val 
+                peak_idx, peak_val = j, d
+            end
+            d = d-ptm
+            s += d
+            s2 += d^2
+        end
+        avg = s/Npost
+
+        posttrig_data = sub(data,Npre+2:endof(data))
+        rise_time = estimate_rise_time(posttrig_data, peak_idx-Npre-2,
+                                       peak_val, ptm, file.dt)
+
+        postpeak_data = data[peak_idx+1:end]
+        const reject_spikes=true
+        postpeak_deriv = max_timeseries_deriv!(
+            post_peak_deriv_vect, postpeak_data, reject_spikes)
+
+        # Copy results into the PulseSummaries object
+        summary.pulse_average[p] = avg
+        summary.pulse_rms[p] = sqrt(s2/Npost - avg*avg)
+        summary.rise_time[p] = rise_time
+        summary.postpeak_deriv[p] = postpeak_deriv
+        summary.peak_index[p] = peak_idx
+        if peak_val > ptm
+            summary.peak_value[p] = peak_val - uint16(ptm)
+        else
+            summary.peak_value[p] = uint16(0)
+        end
+    end
+    summary
+end
+
+function compute_summary_f(file::LJHGroup, r::Range)
     summary = PulseSummaries(length(r))
     Nsamp = record_nsamples(file)
     Npre = pretrig_nsamples(file)+2
     Npost = Nsamp-Npre
     post_peak_deriv_vect = zeros(Float64, Npost)
+    for (p, (data, timestamp)) in enumerate(file.ljhfiles[1][r])
+        # Pretrigger computation first
+        s = s2 = 0.0
+        for j = 1:Npre
+            d = data[j]
+            s += d
+            s2 += d*d
+        end
+        ptm = s/Npre
+        summary.pretrig_mean[p] = ptm
+        summary.pretrig_rms[p] = sqrt(s2/Npre - ptm*ptm)
+
+        # Now post-trigger calculations
+        s = s2 = 0.0
+        peak_idx = 0
+        peak_val = uint16(0)
+        for j = Npre+1:Nsamp
+            d = data[j]
+            if d > peak_val 
+                peak_idx, peak_val = j, d
+            end
+            d = d-ptm
+            s += d
+            s2 += d^2
+        end
+        avg = s/Npost
+
+        posttrig_data = sub(data,Npre+2:endof(data))
+        rise_time = estimate_rise_time(posttrig_data, peak_idx-Npre-2,
+                                       peak_val, ptm, frametime(file))
+
+        postpeak_data = data[peak_idx+1:end]
+        const reject_spikes=true
+        postpeak_deriv = max_timeseries_deriv!(
+            post_peak_deriv_vect, postpeak_data, reject_spikes)
+
+        # Copy results into the PulseSummaries object
+        summary.pulse_average[p] = avg
+        summary.pulse_rms[p] = sqrt(s2/Npost - avg*avg)
+        summary.rise_time[p] = rise_time
+        summary.postpeak_deriv[p] = postpeak_deriv
+        summary.peak_index[p] = peak_idx
+        if peak_val > ptm
+            summary.peak_value[p] = peak_val - uint16(ptm)
+        else
+            summary.peak_value[p] = uint16(0)
+        end
+    end
+    summary
+end
+
+function compute_summary(file::LJHGroup, r::UnitRange)
+    summary = PulseSummaries(length(r))
+    Nsamp::Int = record_nsamples(file)
+    Npre::Int = pretrig_nsamples(file)+2
+    Npost = Nsamp-Npre
+    post_peak_deriv_vect = zeros(Float64, Npost)
     for (p, (data, timestamp)) in enumerate(file[r])
+    	data::Vector{Uint16}
         # Pretrigger computation first
         s = s2 = 0.0
         for j = 1:Npre
@@ -201,6 +314,18 @@ end
 
 s = Step(summarize, ["pulsefile_names","pulsefile_lengths"], (), "pulsefiles_lengths", [string(n) for n in names(PulseSummaries)])
 h5step_add(g,s,10)
-update!(g)
+# update!(g)
+
+println("timing comparisons")
+println("computer_summary")
+@time compute_summary(ljh, 1:5000);
+println("compute_summary_f")
+@time compute_summary_f(ljh, 1:5000);
+println("compute_summary(::LJHFile)")
+@time compute_summary(ljh.ljhfiles[1], 1:5000);
+println("loop over group")
+@time for p in ljh[1:end] end
+println("loop over single ljh file")
+@time for p in ljh.ljhfiles[1][1:end] end
 
 

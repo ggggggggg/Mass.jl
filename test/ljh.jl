@@ -31,5 +31,5 @@ singleljhgroup2 = Mass.MicrocalFiles.LJH.LJHGroup(f1)
 record_nsamples(ljhgroup)
 pretrig_nsamples(ljhgroup)
 @test_throws ErrorException channel(ljhgroup)
-timebase(ljhgroup)
+frametime(ljhgroup)
 end
