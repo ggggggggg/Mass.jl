@@ -1,6 +1,6 @@
 module LJH
 
-export LJHFile, update_num_records
+export LJHGroup, LJHFile, update_num_records, channel, record_nsamples, pretrig_nsamples, timebase, filenames
 
 # LJH file header information
 immutable LJHHeader
@@ -196,10 +196,27 @@ type LJHGroup
 end
 LJHGroup(x::(LJHFile...)) = LJHGroup(x, tuple([length(f) for f in x]...))
 LJHGroup(x) = LJHGroup(tuple([LJHFile(f) for f in x]...))
+LJHGroup(x::LJHFile) = LJHGroup(tuple(x))
+LJHGroup(x::String) = LJHGroup(LJHFile(x))
 Base.length(g::LJHGroup) = sum(g.lengths)
+fieldvalue(g::LJHGroup, s::Symbol) = unique([getfield(f, s) for f in g.ljhfiles])
+function uniquefieldvalue(g::LJHGroup, s::Symbol) 
+    values = fieldvalue(g,s)
+    all(values == first(values)) && return first(values)
+    error("LJHGroup $g should have unique value for $s, instead has multiple values $values")
+end
+channel(g::LJHGroup) = uniquefieldvalue(g, :channum)
+record_nsamples(g::LJHGroup) = uniquefieldvalue(g, :nsamp)
+pretrig_nsamples(g::LJHGroup) = uniquefieldvalue(g, :npre)
+timebase(g::LJHGroup) = uniquefieldvalue(g, :dt)
+filenames(g::LJHGroup) = fieldvalue(g, :name)
 function update_num_records(g::LJHGroup)
     update_num_records(last(g.ljhfiles))
     g.lengths = tuple([length(f) for f in x]...)
+    for file in g.ljhfiles[1:end-1]
+        datalen = stat(file.name).size - file.header.headerSize
+        div(datalen, file.recLength) == file.nrec || critical("a ljh file other than the last file in grew in length $g it was $file")
+    end
 end
 function filenum_pulsenum(g::LJHGroup, j::Int)
     for (i,len) in enumerate(g.lengths)

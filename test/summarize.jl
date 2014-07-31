@@ -4,7 +4,7 @@ module SummarizeTest
 using Mass, Logging
 Logging.configure(level=DEBUG)
 
-f=microcal_open("/Volumes/Drobo/exafs_data/20140719_ferrioxalate_pump_probe/20140719_ferrioxalate_pump_probe_chan1.ljh")
+f=Mass.LJHFile("/Volumes/Drobo/exafs_data/20140719_ferrioxalate_pump_probe/20140719_ferrioxalate_pump_probe_chan1.ljh")
 
 @time o1=Mass.Summarize.compute_summary(f)
 

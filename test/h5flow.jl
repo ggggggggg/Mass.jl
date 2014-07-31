@@ -1,4 +1,4 @@
-using Mass, Mass.H5Helper, Base.Test
+using Mass, Mass.H5Flow, Base.Test
 
 h = h5open("test.h5","w")
 g = g_require(h, "g1")
