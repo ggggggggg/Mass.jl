@@ -11,8 +11,8 @@ export microcal_open, hdf5_name_from_ljh, channel, record_nsamples, pretrig_nsam
 	   g_require, # group stuff
        d_update, d_extend, d_require, #dataset stuff
        a_update, a_require, a_read, # attribute stuff
-       hdf5_name_from_ljh_name, h5open, allnames,
-       close, HDF5Group, HDF5File, name, attrs, names,
+       hdf5_name_from_ljh_name, allnames,
+       close, HDF5Group, HDF5File, name, attrs, names, jldopen,
        Step, update!, h5steps, h5step_add
 
 
