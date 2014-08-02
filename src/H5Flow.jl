@@ -20,6 +20,10 @@ end
 function d_extend(parent::HDF5Group, name::ASCIIString, value::Vector, range::UnitRange)
 	d = d_require(parent, name, value)
 	set_dims!(parent[name], (maximum(range),))
+    @show range
+    @show typeof(value), size(value)
+    @show name
+    @show parent
 	d[range] = value
 	d
 end
@@ -54,11 +58,16 @@ end
 allnames(parent::Union(HDF5Group, HDF5File)) = (names(parent), names(attrs(parent)))
 
 # foward most function from Jld Group/File to plain 
-for f in (:d_extend, :d_update, :d_require, :a_require, :a_update, :allnames,
-        :dostep, :update)
+for f in (:d_extend, :d_update, :d_require, :a_require, :a_update, :allnames)
 eval(:($f(parent::Union(JLD.JldFile, JLD.JldGroup), args...) = $f(parent.plain, args...)))
 end
 HDF5.a_read(parent::Union(JLD.JldFile, JLD.JldGroup), args...) = a_read(parent.plain, args...)
+Base.getindex(d::JLD.JldDataset, args...) = getindex(d.plain, args...)
+Base.setindex!(d::JLD.JldDataset, args...) = setindex!(d.plain, args...)
+Base.length(d::JLD.JldDataset, args...) = length(d.plain, args...)
+Base.endof(d::JLD.JldDataset, args...) = endof(d.plain, args...)
+Base.size(d::JLD.JldDataset, args...) = size(d.plain, args...)
+
 
 # Given an LJH file name, return the HDF5 name
 # Generally, /x/y/z/data_taken_chan1.ljh becomes /x/y/z/data_taken_mass.hdf5
@@ -99,8 +108,8 @@ function place_outs(h5grp, s::Step, r::UnitRange, outs)
     for j in 1:length(s.d_outs) 
         d_extend(h5grp, s.d_outs[j], outs[j+length(s.a_outs)], r) end
 end
-dostep(h5grp::Union(HDF5Group, HDF5File), s::Step) = dostep(h5grp, s, range(h5grp,s))
-function dostep(h5grp::Union(HDF5Group, HDF5File), s::Step, r::UnitRange)
+dostep(h5grp::Union(JldFile, JldGroup), s::Step) = dostep(h5grp, s, range(h5grp,s))
+function dostep(h5grp::Union(JldFile, JldGroup), s::Step, r::UnitRange)
     println(s)
     starttime = tic()
     outs = calc_outs(h5grp, s, r)
@@ -108,7 +117,7 @@ function dostep(h5grp::Union(HDF5Group, HDF5File), s::Step, r::UnitRange)
     println(name(h5grp), " ",r, " ",elapsed," s, ", s)
     place_outs(h5grp, s, r, outs)
 end
-function dostep(h5grp::Union(HDF5Group, HDF5File), s::Step, max_step_size::Int)
+function dostep(h5grp::Union(JldFile, JldGroup), s::Step, max_step_size::Int)
     r = range(h5grp, s)
     length(r)>max_step_size && (r = first(r):max_step_size-first(r)%max_step_size+first(r))
     dostep(h5grp, s, r)
@@ -129,8 +138,8 @@ function h5steps(jlgrp::Union(JldFile, JldGroup))
     nums = h5stepnumbers(jlgrp)
     Step[read(jlgrp["steps"]["$n"]) for n in nums] # no check for existing because non empty nums requires existence
 end
-update!(h5grp::HDF5Group) = [dostep(h5grp, s) for s in h5steps(h5grp)]
-update!(h5grp::HDF5Group, max_step_size::Int) = [dostep(h5grp, s, max_step_size) for s in h5steps(h5grp)]
+update!(h5grp::JldGroup) = [dostep(h5grp, s) for s in h5steps(h5grp)]
+update!(h5grp::JldGroup, max_step_size::Int) = [dostep(h5grp, s, max_step_size) for s in h5steps(h5grp)]
 
 export g_require, # group stuff
        d_update, d_extend, d_require, #dataset stuff
