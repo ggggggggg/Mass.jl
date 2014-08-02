@@ -1,6 +1,6 @@
 using Mass, Mass.H5Flow, Base.Test
 
-h = h5open("test.h5","w")
+h = jldopen("test.h5","w")
 g = g_require(h, "g1")
 
 
@@ -14,7 +14,7 @@ a_update(g, "attribute", "string")
 @test a_read(g, "attribute") == "string"
 a_update(g, "new_attribute", 77)
 @test a_read(g, "new_attribute")==77
-for j = 1:100
+for j = 1:2
 a_update(g, "new_attribute", j)
 @test a_read(g, "new_attribute",0)==j
 end	
@@ -23,7 +23,7 @@ function f()
 	a_update(g, "new_attribute", j+1)
 	@test j+1 == a_read(g,"new_attribute",0)
 end
-for j=1:100 f() end
+for j=1:3 f() end
 
 
 

@@ -1,11 +1,13 @@
 using Mass
-ljhgroup1=microcal_open("/Volumes/Drobo/exafs_data/20140719_ferrioxalate_pump_probe/20140719_ferrioxalate_pump_probe_chan1.ljh")
-ljhgroup1.ljhfiles[1].nrec = div(ljhgroup1.ljhfiles[1].nrec,2)
-ljhgroup2 = Mass.MicrocalFiles.LJHGroup(ljhgroup1.ljhfiles[1])
+fname1 = "/Volumes/Drobo/exafs_data/20140719_ferrioxalate_pump_probe/20140719_ferrioxalate_pump_probe_chan1.ljh"
+fname2 = "/Volumes/Drobo/exafs_data/20140720_ferrioxalate_pump_probe/20140720_ferrioxalate_pump_probe_chan1.ljh"
+ljhgroup1=microcal_open([fname1, fname2])
+ljhgroup1.ljhfiles[end-1].nrec = div(ljhgroup1.ljhfiles[end-1].nrec,2)
+ljhgroup2 = Mass.MicrocalFiles.LJHGroup(ljhgroup1.ljhfiles)
 
-h5 = h5open(hdf5_name_from_ljh(ljhgroup2),"w")
+h5 = jldopen(hdf5_name_from_ljh(ljhgroup2),"w")
 close(h5)
-h5 = h5open(hdf5_name_from_ljh(ljhgroup2),"r+")
+h5 = jldopen(hdf5_name_from_ljh(ljhgroup2),"r+")
 
 function ptm_correction(r, params, ptm, ph)
     ptm_offset, slope = params
@@ -19,5 +21,5 @@ a_update(g, "pretrigger_mean_correction", [2000.0, 0.1]) # imagine this is gener
 h5step_add(g,summarize_step)
 h5step_add(g, ptm_correction_step)
 update!(g)
-for j=1:3 update!(g,100000) end
+for j=1:3 update!(g,200000) end
 

@@ -1,5 +1,5 @@
 module H5Flow
-using HDF5, Logging
+using HDF5, JLD, Logging
 
 # there are three relevant things in an HDF5 file
 # g_* deals with groups, d_* deals with datasets, a_* deals with atttributes
@@ -50,7 +50,16 @@ end
 function HDF5.a_read(parent::HDF5Group, name::String, default_value)
 	exists(attrs(parent),name) ? a_read(parent, name) : default_value
 end
-allnames(g::Union(HDF5Group, HDF5File)) = (names(g), names(attrs(g)))
+allnames(parent::Union(HDF5Group, HDF5File)) = (names(parent), names(attrs(parent)))
+
+# foward most function from Jld Group/File to plain 
+for f in (:g_require, :d_extend, :d_update, :d_require, :a_require, :a_update, :allnames,
+        :dostep, :h5step_write, :h5step_add, :h5stepnumbers, :h5step_read, :h5stepnumbers,
+        :update)
+eval(:($f(parent::Union(JLD.JldFile, JLD.JldGroup), args...) = $f(parent.plain, args...)))
+end
+HDF5.a_read(parent::Union(JLD.JldFile, JLD.JldGroup), args...) = a_read(parent, args...)
+
 
 # Given an LJH file name, return the HDF5 name
 # Generally, /x/y/z/data_taken_chan1.ljh becomes /x/y/z/data_taken_mass.hdf5
@@ -90,35 +99,35 @@ function place_outs(h5grp, s::Step, r::UnitRange, outs)
     for j in 1:length(s.d_outs) 
         d_extend(h5grp, s.d_outs[j], outs[j+length(s.a_outs)], r) end
 end
-dostep(h5grp, s::Step) = dostep(h5grp, s, range(h5grp,s))
-function dostep(h5grp, s::Step, r::UnitRange)
+dostep(h5grp::Union(HDF5Group, HDF5File), s::Step) = dostep(h5grp, s, range(h5grp,s))
+function dostep(h5grp::Union(HDF5Group, HDF5File), s::Step, r::UnitRange)
     starttime = tic()
     outs = calc_outs(h5grp, s, r)
     elapsed = (tic()-starttime)*1e-9
     println(name(h5grp), " ",r, " ",elapsed," s, ", s)
     place_outs(h5grp, s, r, outs)
 end
-function dostep(h5grp, s::Step, max_step_size::Int)
+function dostep(h5grp::Union(HDF5Group, HDF5File), s::Step, max_step_size::Int)
     r = range(h5grp, s)
     length(r)>max_step_size && (r = first(r):max_step_size-first(r)%max_step_size+first(r))
     dostep(h5grp, s, r)
 end
-h5step_write(h5grp, s::Step) = for name in names(s) a_require(h5grp, "$name", repr(getfield(s,name))) end
-function h5step_read(h5grp,m::Module=Main)
+h5step_write(h5grp::Union(HDF5Group, HDF5File), s::Step) = for name in names(s) a_require(h5grp, "$name", repr(getfield(s,name))) end
+function h5step_read(h5grp::Union(HDF5Group, HDF5File),m::Module=Main)
     data = [tupleize([convert(UTF8String,m.match) for m in collect(eachmatch(r"[/0-9a-zA-Z_]+", a_read(h5grp, "$name")))]) for name in names(Step)]
     Step(getfield(m, symbol(data[1][1])), data[2:end]...)   
 end
-h5step_add(h5grp, s::Step, n::Integer) = h5step_write(g_require(g_require(h5grp, "steps"),"$n"), s)
-function h5step_add(h5grp, s::Step)
+h5step_add(h5grp::Union(HDF5Group, HDF5File), s::Step, n::Integer) = h5step_write(g_require(g_require(h5grp, "steps"),"$n"), s)
+function h5step_add(h5grp::Union(HDF5Group, HDF5File), s::Step)
     nums = h5stepnumbers(h5grp)
     n = 10*div(max(nums...,0),10)+10
     h5step_add(h5grp, s, n)
 end
-function h5stepnumbers(h5grp)
+function h5stepnumbers(h5grp::Union(HDF5Group, HDF5File))
     exists(h5grp, "steps") || return Int[]
     nums = sort([int(name) for name in names(h5grp["steps"])])
 end
-function h5steps(h5grp)
+function h5steps(h5grp::Union(HDF5Group, HDF5File))
     nums = h5stepnumbers(h5grp)
     Step[h5step_read(h5grp["steps"]["$n"]) for n in nums] # no check for existing because non empty nums requires existence
 end
@@ -128,7 +137,7 @@ update!(h5grp::HDF5Group, m::Int) = [dostep(h5grp, s, m) for s in h5steps(h5grp)
 export g_require, # group stuff
        d_update, d_extend, d_require, #dataset stuff
        a_update, a_require, a_read, # attribute stuff
-       hdf5_name_from_ljh_name, h5open, allnames,
+       hdf5_name_from_ljh_name, jldopen, allnames,
        close, HDF5Group, HDF5File, name, attrs, names,
        Step, update!, h5steps, h5step_add
 

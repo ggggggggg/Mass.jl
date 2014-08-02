@@ -165,7 +165,7 @@ function max_timeseries_deriv!{T}(
     maximum(deriv)
 end
 
-function init_channel(h5::Union(HDF5File, HDF5Group), ljhgroup::LJHGroup)
+function init_channel(h5::H5Flow.JLD.JLDGroup, ljhgroup::LJHGroup)
     g = g_require(h5, "chan$(channel(ljhgroup))")
     H5Flow.exists(g, "pulsefiles") && warning("init_chan $g was already initialized, proceeding anyway")
     a_require(g, "pulsefile_names", filenames(ljhgroup))
