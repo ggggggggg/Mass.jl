@@ -218,6 +218,7 @@ function filenum_pulsenum(g::LJHGroup, j::Int)
     for (i,len) in enumerate(g.lengths)
         j <= len ? (return i,j) : (j-=len)
     end
+    1,1 # default return value in case of empty range
 end
 function Base.getindex(g::LJHGroup, i::Int)
     filenum, pulsenum = filenum_pulsenum(g,i)
@@ -229,7 +230,7 @@ immutable LJHGroupSlice{T<:AbstractArray}
     g::LJHGroup
     slice::T
     function LJHGroupSlice(ljhgroup, slice)
-        maximum(slice)<=length(ljhgroup) || error("$(maximum(slice)) is greater than nrec=$(length(ljhgroup)) in $ljhgroup")
+        isempty(slice) || maximum(slice)<=length(ljhgroup) || error("$(maximum(slice)) is greater than nrec=$(length(ljhgroup)) in $ljhgroup")
         new(ljhgroup, slice)
     end
 end
@@ -238,6 +239,7 @@ Base.endof(g::LJHGroupSlice) = length(g.slice)
 LJHGroupSlice{T<:AbstractArray}(ljhfile::LJHGroup, slice::T) = LJHGroupSlice{T}(ljhfile, slice)
 function Base.start{T<:UnitRange}(g::LJHGroupSlice{T})
     for f in g.g.ljhfiles seekto(f,1) end
+    isempty(g.slice) && return (2,2,1,1) # ensure done condition is immediatley met on empty range
     filenum, pulsenum = filenum_pulsenum(g.g, first(g.slice))
     donefilenum, donepulsenum = filenum_pulsenum(g.g, last(g.slice))
     seekto(g.g.ljhfiles[filenum], pulsenum)

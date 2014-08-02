@@ -1,5 +1,6 @@
 module H5Flow
 using HDF5, JLD, Logging
+import JLD: JldGroup, JldFile
 
 # there are three relevant things in an HDF5 file
 # g_* deals with groups, d_* deals with datasets, a_* deals with atttributes
@@ -96,6 +97,7 @@ function place_outs(h5grp, s::Step, r::UnitRange, outs)
     assert(length(outs) == length(s.a_outs)+length(s.d_outs))
     for j in 1:length(s.a_outs) 
         a_update(h5grp, s.a_outs[j], outs[j]) end
+    isempty(r) && return #dont try to place dataset outs with empty range
     for j in 1:length(s.d_outs) 
         d_extend(h5grp, s.d_outs[j], outs[j+length(s.a_outs)], r) end
 end
@@ -138,7 +140,7 @@ export g_require, # group stuff
        d_update, d_extend, d_require, #dataset stuff
        a_update, a_require, a_read, # attribute stuff
        hdf5_name_from_ljh_name, jldopen, allnames,
-       close, HDF5Group, HDF5File, name, attrs, names,
+       close, JldGroup, JldFile, name, attrs, names,
        Step, update!, h5steps, h5step_add
 
 end # endmodule
