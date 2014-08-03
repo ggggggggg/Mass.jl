@@ -1,6 +1,7 @@
 module H5Flow
 using HDF5, JLD, Logging
 import JLD: JldGroup, JldFile
+import HDF5: a_read
 
 # there are three relevant things in an HDF5 file
 # g_* deals with groups, d_* deals with datasets, a_* deals with atttributes
@@ -12,6 +13,7 @@ import JLD: JldGroup, JldFile
 # Create a new or open an existing group within an HDF5 object
 # If you can figure out a native syntax that handles both cases,
 # then we'd prefer to use it.
+
 function g_require(parent::Union(JldFile,JldGroup), name::ASCIIString)
     exists(parent, name) ? (return parent[name]) : g_create(parent, name)
 end
@@ -20,10 +22,6 @@ end
 function d_extend(parent::HDF5Group, name::ASCIIString, value::Vector, range::UnitRange)
 	d = d_require(parent, name, value)
 	set_dims!(parent[name], (maximum(range),))
-    @show range
-    @show typeof(value), size(value)
-    @show name
-    @show parent
 	d[range] = value
 	d
 end
@@ -52,22 +50,15 @@ function a_update(parent::HDF5Group,name::ASCIIString,value)
     attrs(parent)[name] = value
 end
 # read an attribute, but if it doesn't exist, return default_value
-function HDF5.a_read(parent::HDF5Group, name::String, default_value)
+function a_read(parent::HDF5Group, name::String, default_value)
 	exists(attrs(parent),name) ? a_read(parent, name) : default_value
 end
 allnames(parent::Union(HDF5Group, HDF5File)) = (names(parent), names(attrs(parent)))
 
 # foward most function from Jld Group/File to plain 
-for f in (:d_extend, :d_update, :d_require, :a_require, :a_update, :allnames)
-eval(:($f(parent::Union(JLD.JldFile, JLD.JldGroup), args...) = $f(parent.plain, args...)))
+for f in (:d_extend, :d_update, :d_require, :a_require, :a_update, :allnames, :a_read)
+eval(:($f(parent::Union(JldFile, JldGroup), args...) = $f(parent.plain, args...)))
 end
-HDF5.a_read(parent::Union(JLD.JldFile, JLD.JldGroup), args...) = a_read(parent.plain, args...)
-Base.getindex(d::JLD.JldDataset, args...) = getindex(d.plain, args...)
-Base.setindex!(d::JLD.JldDataset, args...) = setindex!(d.plain, args...)
-Base.length(d::JLD.JldDataset, args...) = length(d.plain, args...)
-Base.endof(d::JLD.JldDataset, args...) = endof(d.plain, args...)
-Base.size(d::JLD.JldDataset, args...) = size(d.plain, args...)
-
 
 # Given an LJH file name, return the HDF5 name
 # Generally, /x/y/z/data_taken_chan1.ljh becomes /x/y/z/data_taken_mass.hdf5
@@ -79,7 +70,8 @@ function hdf5_name_from_ljh_name(ljhname::String)
     path = string(path[1:m.offset-1], "_mass.hdf5")
 end
 
-immutable Step
+abstract AbstractStep
+immutable Step <: AbstractStep
     func::String
     a_ins::(ASCIIString...) #attribute inputs
     d_ins::(ASCIIString...) #dataset inputs
@@ -122,12 +114,10 @@ function dostep(h5grp::Union(JldFile, JldGroup), s::Step, max_step_size::Int)
     length(r)>max_step_size && (r = first(r):max_step_size-first(r)%max_step_size+first(r))
     dostep(h5grp, s, r)
 end
-h5step_add(jlgrp::Union(JldFile, JldGroup), s::Step, n::Integer) = jlgrp["steps/$n"] = s
-function h5step_add(jlgrp::Union(JldFile, JldGroup), s::Step)
-    print("1 $jlgrp")
+h5step_add(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, n::Integer) = jlgrp["steps/$n"] = s
+function h5step_add(jlgrp::Union(JldFile, JldGroup), s::AbstractStep)
     nums = h5stepnumbers(jlgrp)
     n = isempty(nums) ? 10 : 10*div(last(nums),10)+10
-    print("2 $jlgrp")
     h5step_add(jlgrp, s, n)
 end
 function h5stepnumbers(jlgrp::Union(JldFile, JldGroup))
@@ -136,17 +126,40 @@ function h5stepnumbers(jlgrp::Union(JldFile, JldGroup))
 end
 function h5steps(jlgrp::Union(JldFile, JldGroup))
     nums = h5stepnumbers(jlgrp)
-    Step[read(jlgrp["steps"]["$n"]) for n in nums] # no check for existing because non empty nums requires existence
+    AbstractStep[read(jlgrp["steps"]["$n"]) for n in nums] # no check for existing because non empty nums requires existence
 end
-update!(h5grp::JldGroup) = [dostep(h5grp, s) for s in h5steps(h5grp)]
+update!(h5grp::JldGroup) = [dostep(h5grp, s, typemax(Int)) for s in h5steps(h5grp)]
 update!(h5grp::JldGroup, max_step_size::Int) = [dostep(h5grp, s, max_step_size) for s in h5steps(h5grp)]
+
+immutable ThresholdStep{T<:AbstractStep} <: AbstractStep
+    hashappened::Bool
+    thresholdattr::ASCIIString
+    thresholdvalue::Real
+    step::T
+end
+ThresholdStep(attr::ASCIIString, value::Real, step::AbstractStep) = ThresholdStep(false, attr, value, step)
+ThresholdStep(hashappened::Bool, ts::ThresholdStep) = ThresholdStep(hashappend, ts.thresholdattr, ts.thresholdvalue, ts.step)
+function dostep(h5grp::Union(JldFile, JldGroup), s::ThresholdStep, max_step_size::Int)
+    s.hashappened && return
+    attrvalue = a_read(h5grp, s.thresholdattr, 0)
+    attrvalue < s.thresholdvalue && return
+    dostep(h5grp, s.step, max_step_size)
+    # code to make s.hashappened=true next time we load this step
+end
+
+immutable NothingStep <: AbstractStep
+end
+function dostep(h5grp::Union(JldFile, JldGroup), s::NothingStep, max_step_size::Int)
+    debug("doing NothingStep")
+end
 
 export g_require, # group stuff
        d_update, d_extend, d_require, #dataset stuff
        a_update, a_require, a_read, # attribute stuff
        hdf5_name_from_ljh_name, jldopen, allnames,
        close, JldGroup, JldFile, name, attrs, names,
-       Step, update!, h5steps, h5step_add
+       Step, AbstractStep, ThresholdStep,
+       update!, h5steps, h5step_add
 
 end # endmodule
 

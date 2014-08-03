@@ -25,15 +25,13 @@ function f()
 end
 for j=1:3 f() end
 
-
-
-
-
-
 d_update(g, "dataset", [1:10])
 d_extend(g, "dataset", [11:20], 11:20)
 @test g["dataset"][:] == [1:20]
+@test length(g["dataset"]) == 20
 d_extend(g, "dataset", [21:30])
 @test g["dataset"][:] == [1:30]
+@test length(g["dataset"]) == 30
+@test length(g["dataset"]) == 30
 d_update(g,"dataset",[1:10])
 @test g["dataset"][:] == [1:10]
