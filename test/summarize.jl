@@ -34,3 +34,5 @@ h5step_add(g, ptm_correction_step)
 h5step_add(g, Mass.H5Flow.ThresholdStep("pulse_rms", 400000, calibrate_step))
 for j=1:4 update!(g,300000) end
 
+pythonattrs = ["npulses", "mass_version", "timebase", "channel", "git_state", "julia_version","pulsefiles_names","pulsefile_lengths"]
+Mass.H5Flow.pythonize(g,pythonattrs,pythonattrs)

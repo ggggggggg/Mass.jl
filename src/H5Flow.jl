@@ -176,6 +176,17 @@ function dostep(jlgrp::Union(JldFile, JldGroup), s::NothingStep, max_step_size::
     debug("doing NothingStep")
 end
 
+function pythonize(jlgrp::JldGroup, o_ins, a_outs)
+    # non per pulse "o" datasets get written as attrs
+    # for compatability with python mass
+    for (o,a) in zip(o_ins, a_outs)
+        println(o," ",a)
+        value = read(jlgrp, o)
+        delete!(jlgrp, o)
+        a_require(jlgrp, a, value)
+    end
+end
+
 export g_require, # group stuff
        d_update, d_extend, d_require, #dataset stuff
        a_update, a_require, a_read, # attribute stuff
