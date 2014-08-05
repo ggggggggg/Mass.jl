@@ -1,7 +1,7 @@
 module H5Flow
 using HDF5, JLD, Logging
 import JLD: JldGroup, JldFile
-import HDF5: a_read
+import HDF5: a_read,==, read
 
 # there are three relevant things in an HDF5 file
 # g_* deals with groups, d_* deals with datasets, a_* deals with atttributes
@@ -54,11 +54,23 @@ function a_read(parent::HDF5Group, name::String, default_value)
 	exists(attrs(parent),name) ? a_read(parent, name) : default_value
 end
 allnames(parent::Union(HDF5Group, HDF5File)) = (names(parent), names(attrs(parent)))
-
-# foward most function from Jld Group/File to plain 
+function read(parent::Union(JldGroup, JldFile), name::ASCIIString, default_value)
+    exists(parent, name) ? read(parent, name) : default_value
+end
+# foward functions from Jld Group/File to plain 
 for f in (:d_extend, :d_update, :d_require, :a_require, :a_update, :allnames, :a_read)
 eval(:($f(parent::Union(JldFile, JldGroup), args...) = $f(parent.plain, args...)))
 end
+function update!(parent::Union(JldFile, JldGroup), name::ASCIIString, value)
+    if exists(parent, name)
+        old_value = read(parent, name)
+        old_value == value && (return value)
+        typeof(old_value) == typeof(value) || error("attempted to update $(parent[name]) of type $(typeof(old_value)) with new value of type $(typeof(value))")
+        delete!(parent[name])
+    end
+    parent[name] = value
+end
+
 
 # Given an LJH file name, return the HDF5 name
 # Generally, /x/y/z/data_taken_chan1.ljh becomes /x/y/z/data_taken_mass.hdf5
@@ -71,12 +83,13 @@ function hdf5_name_from_ljh_name(ljhname::String)
 end
 
 abstract AbstractStep
+==(a::AbstractStep, b::AbstractStep) = typeof(a)==typeof(b) && all([getfield(a,n)==getfield(b,n) for n in names(a)])
 immutable Step <: AbstractStep
     func::String
-    a_ins::(ASCIIString...) #attribute inputs
-    d_ins::(ASCIIString...) #dataset inputs
-    a_outs::(ASCIIString...) #attribute outputs
-    d_outs::(ASCIIString...) #dataset outputs
+    o_ins::(ASCIIString...) # other inputs
+    p_ins::(ASCIIString...) # per pulse inputs
+    o_outs::(ASCIIString...) # other outputs
+    p_outs::(ASCIIString...) # per pulse outputs
     Step(func,a,b,c,d) = new(func, tupleize(a), tupleize(b), tupleize(c), tupleize(d))
 end
 Step(func::Symbol,a,b,c,d) = Step(string(func),a,b,c,d)
@@ -84,41 +97,50 @@ Step(func::Function,a,b,c,d) = Step("$func",a,b,c,d)
 ==(a::Step, b::Step) = all([getfield(a,name)==getfield(b,name) for name in names(a)])
 tupleize(x::String) = (x,)
 tupleize(x) = tuple(x...)
-input_lengths(h5grp, s::Step) = [[size(h5grp[name])[end] for name in s.d_ins], a_read(h5grp, "npulses", 0)]
+input_lengths(jlgrp, s::Step) = [[size(jlgrp[name])[end] for name in s.p_ins], read(jlgrp, "npulses", 0)]
 # input lengths is a vector of the lengths of all the input datasets and "npulses" (with a default of 0 if it doesn't exist)
-output_lengths(h5grp, s::Step) = length(s.d_outs) == 0 ? [1] : [[exists(h5grp, name) ? size(h5grp[name])[end] : 0 for name in s.d_outs]]
-range(h5grp, s::Step) = minimum(output_lengths(h5grp, s))+1:minimum(input_lengths(h5grp,s))
-a_args(h5grp, s::Step) = [a_read(h5grp,name) for name in s.a_ins]
-d_args(h5grp, s::Step, r::UnitRange) = [h5grp[name][r] for name in s.d_ins]
-args(h5grp, s::Step, r::UnitRange) = tuple(a_args(h5grp, s)..., d_args(h5grp, s, r)...)
-calc_outs(h5grp, s::Step, r::UnitRange) = getfield(Main,symbol(s.func))(r, args(h5grp, s, r)...)
-function place_outs(h5grp, s::Step, r::UnitRange, outs) 
-    assert(length(outs) == length(s.a_outs)+length(s.d_outs))
-    for j in 1:length(s.a_outs) 
-        a_update(h5grp, s.a_outs[j], outs[j]) end
+output_lengths(jlgrp, s::Step) = length(s.p_outs) == 0 ? [1] : [[exists(jlgrp, name) ? size(jlgrp[name])[end] : 0 for name in s.p_outs]]
+range(jlgrp, s::Step) = minimum(output_lengths(jlgrp, s))+1:minimum(input_lengths(jlgrp,s))
+o_args(jlgrp, s::Step) = [read(jlgrp,name) for name in s.o_ins]
+p_args(jlgrp, s::Step, r::UnitRange) = [jlgrp[name][r] for name in s.p_ins]
+args(jlgrp, s::Step, r::UnitRange) = tuple(o_args(jlgrp, s)..., p_args(jlgrp, s, r)...)
+calc_outs(jlgrp, s::Step, r::UnitRange) = getfield(Main,symbol(s.func))(r, args(jlgrp, s, r)...)
+function place_outs(jlgrp, s::Step, r::UnitRange, outs) 
+    assert(length(outs) == length(s.o_outs)+length(s.p_outs))
+    for j in 1:length(s.o_outs) 
+        update!(jlgrp, s.o_outs[j], outs[j]) end
     isempty(r) && return #dont try to place dataset outs with empty range
-    for j in 1:length(s.d_outs) 
-        d_extend(h5grp, s.d_outs[j], outs[j+length(s.a_outs)], r) end
+    for j in 1:length(s.p_outs) 
+        d_extend(jlgrp, s.p_outs[j], outs[j+length(s.o_outs)], r) end
 end
-dostep(h5grp::Union(JldFile, JldGroup), s::Step) = dostep(h5grp, s, range(h5grp,s))
-function dostep(h5grp::Union(JldFile, JldGroup), s::Step, r::UnitRange)
+dostep(jlgrp::Union(JldFile, JldGroup), s::Step) = dostep(jlgrp, s, range(jlgrp,s))
+function dostep(jlgrp::Union(JldFile, JldGroup), s::Step, r::UnitRange)
     println(s)
     starttime = tic()
-    outs = calc_outs(h5grp, s, r)
+    outs = calc_outs(jlgrp, s, r)
     elapsed = (tic()-starttime)*1e-9
-    println(name(h5grp), " ",r, " ",elapsed," s, ", s)
-    place_outs(h5grp, s, r, outs)
+    println(name(jlgrp), " ",r, " ",elapsed," s, ", s)
+    place_outs(jlgrp, s, r, outs)
 end
-function dostep(h5grp::Union(JldFile, JldGroup), s::Step, max_step_size::Int)
-    r = range(h5grp, s)
+function dostep(jlgrp::Union(JldFile, JldGroup), s::Step, max_step_size::Int)
+    r = range(jlgrp, s)
     length(r)>max_step_size && (r = first(r):max_step_size-first(r)%max_step_size+first(r))
-    dostep(h5grp, s, r)
+    dostep(jlgrp, s, r)
 end
 h5step_add(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, n::Integer) = jlgrp["steps/$n"] = s
 function h5step_add(jlgrp::Union(JldFile, JldGroup), s::AbstractStep)
     nums = h5stepnumbers(jlgrp)
     n = isempty(nums) ? 10 : 10*div(last(nums),10)+10
     h5step_add(jlgrp, s, n)
+end
+function h5step_del(jlgrp::Union(JldFile, JldGroup), s::AbstractStep)
+    nums, steps = h5stepnumbers(jlgrp), h5steps(jlgrp)
+    println(steps)
+    del_nums = nums[steps.==s]
+    length(del_nums) >0 || error("$s is not a step in $jlgrp")
+    println(del_nums)
+    for n in del_nums delete!(jlgrp,"steps/$n") end
+    nums
 end
 function h5stepnumbers(jlgrp::Union(JldFile, JldGroup))
     exists(jlgrp, "steps") || return Int[]
@@ -128,28 +150,29 @@ function h5steps(jlgrp::Union(JldFile, JldGroup))
     nums = h5stepnumbers(jlgrp)
     AbstractStep[read(jlgrp["steps"]["$n"]) for n in nums] # no check for existing because non empty nums requires existence
 end
-update!(h5grp::JldGroup) = [dostep(h5grp, s, typemax(Int)) for s in h5steps(h5grp)]
-update!(h5grp::JldGroup, max_step_size::Int) = [dostep(h5grp, s, max_step_size) for s in h5steps(h5grp)]
+update!(jlgrp::JldGroup) = [dostep(jlgrp, s, typemax(Int)) for s in h5steps(jlgrp)]
+update!(jlgrp::JldGroup, max_step_size::Int) = [dostep(jlgrp, s, max_step_size) for s in h5steps(jlgrp)]
 
 immutable ThresholdStep{T<:AbstractStep} <: AbstractStep
-    hashappened::Bool
-    thresholdattr::ASCIIString
-    thresholdvalue::Real
+    watched_dset::ASCIIString
+    thresholdlength::Real
     step::T
 end
-ThresholdStep(attr::ASCIIString, value::Real, step::AbstractStep) = ThresholdStep(false, attr, value, step)
-ThresholdStep(hashappened::Bool, ts::ThresholdStep) = ThresholdStep(hashappend, ts.thresholdattr, ts.thresholdvalue, ts.step)
-function dostep(h5grp::Union(JldFile, JldGroup), s::ThresholdStep, max_step_size::Int)
-    s.hashappened && return
-    attrvalue = a_read(h5grp, s.thresholdattr, 0)
-    attrvalue < s.thresholdvalue && return
-    dostep(h5grp, s.step, max_step_size)
-    # code to make s.hashappened=true next time we load this step
+function outputs_exist(jlgrp, s::Step)
+    p_outs = [exists(jlgrp, name) for name in s.p_outs]
+    o_outs = [exists(jlgrp, name) for name in s.o_outs]
+    all(p_outs) && all(o_outs)
+end
+function dostep(jlgrp::Union(JldFile, JldGroup), s::ThresholdStep, max_step_size::Int)
+    outputs_exist(jlgrp, s.step) && return 
+    @show dsetlength = size(jlgrp[s.watched_dset])[end]
+    dsetlength < s.thresholdlength && return
+    dostep(jlgrp, s.step, max_step_size)
 end
 
 immutable NothingStep <: AbstractStep
 end
-function dostep(h5grp::Union(JldFile, JldGroup), s::NothingStep, max_step_size::Int)
+function dostep(jlgrp::Union(JldFile, JldGroup), s::NothingStep, max_step_size::Int)
     debug("doing NothingStep")
 end
 
