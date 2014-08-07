@@ -24,20 +24,20 @@ end
 
 function calibrate(r, pulse_rms, cuts)
 	println("Calibration!!!!**!!")
-	cuts = reinterpret(Bool, cuts)
-	println(length(cuts))
-	println(sum(cuts))
-	println(length(pulse_rms[cuts]))
-	(Calibration(["Zero","MnKAlpha"], [0, 5898], [0,median(pulse_rms[cuts])]),)
+	good = !reinterpret(Bool, cuts)
+	println(length(good))
+	println(sum(good))
+	println(length(pulse_rms[good]))
+	(Calibration(["Zero","MnKAlpha"], [0, 5898], [0,median(pulse_rms[good])]),)
 end
 calibrate_step = Step(calibrate, [], ["pulse_rms","cuts"], "calibration/pulse_rms", [])
 
-function selection(r, lims1, lims2, vec1, vec2)
+function cuts(r, lims1, lims2, vec1, vec2)
 	out = Bool[lims1[1]<v<lims1[2] for v in vec1] & Bool[lims2[1]<v<lims2[2] for v in vec2]
-	out = reinterpret(Int8, out)
+	out = reinterpret(Int8, !out)
 	return (out,)
 end
-selection_step = Step(selection, ["pretrig_rms_lims", "postpeak_deriv_lims"],["pretrig_rms","postpeak_deriv"],[],"cuts")
+cut_step = Step(cuts, ["pretrig_rms_lims", "postpeak_deriv_lims"],["pretrig_rms","postpeak_deriv"],[],"cuts")
 
 function apply(r, cal::Calibration, pulse_rms)
 	energy = pulse_rms.*(cal.energies[end]/cal.estimates[end])
@@ -51,10 +51,21 @@ g["pretrig_rms_lims"] = [0,50]
 g["postpeak_deriv_lims"] = [typemin(Int),1]
 h5step_add(g, summarize_step)
 h5step_add(g, ptm_correction_step)
-h5step_add(g, selection_step)
+h5step_add(g, cut_step)
 h5step_add(g, Mass.H5Flow.ThresholdStep("pulse_rms", 400000, calibrate_step))
 h5step_add(g, apply_calibration_step)
-for j=1:4 update!(g,300000) end
+for j=1:5 update!(g,300000) end
+
+getgood(g) = !reinterpret(Bool, g["cuts"][:])
+using PyPlot
+function histenergy(g)
+	energy = g["energy"][:][getgood(g)]
+	plt.hist(energy, [0:2:10000])
+	xlabel("energy (eV)")
+	ylabel("counts per 2 eV bin")
+	title(name(g))
+end
+histenergy(g)
 
 # pythonattrs = ["npulses", "mass_version", "timebase", "channel", "git_state", "julia_version","pulsefiles_names","pulsefile_lengths"]
 # Mass.H5Flow.pythonize(g,pythonattrs,pythonattrs)
