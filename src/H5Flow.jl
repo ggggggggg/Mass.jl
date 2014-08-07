@@ -105,7 +105,7 @@ o_args(jlgrp, s::Step) = [read(jlgrp,name) for name in s.o_ins]
 p_args(jlgrp, s::Step, r::UnitRange) = [jlgrp[name][r] for name in s.p_ins]
 args(jlgrp, s::Step, r::UnitRange) = tuple(o_args(jlgrp, s)..., p_args(jlgrp, s, r)...)
 calc_outs(jlgrp, s::Step, r::UnitRange) = getfield(Main,symbol(s.func))(r, args(jlgrp, s, r)...)
-function place_outs(jlgrp, s::Step, r::UnitRange, outs) 
+function place_outs(jlgrp, s::Step, r::UnitRange, outs)
     assert(length(outs) == length(s.o_outs)+length(s.p_outs))
     for j in 1:length(s.o_outs) 
         update!(jlgrp, s.o_outs[j], outs[j]) end
@@ -115,7 +115,6 @@ function place_outs(jlgrp, s::Step, r::UnitRange, outs)
 end
 dostep(jlgrp::Union(JldFile, JldGroup), s::Step) = dostep(jlgrp, s, range(jlgrp,s))
 function dostep(jlgrp::Union(JldFile, JldGroup), s::Step, r::UnitRange)
-    println(s)
     starttime = tic()
     outs = calc_outs(jlgrp, s, r)
     elapsed = (tic()-starttime)*1e-9
@@ -123,6 +122,7 @@ function dostep(jlgrp::Union(JldFile, JldGroup), s::Step, r::UnitRange)
     place_outs(jlgrp, s, r, outs)
 end
 function dostep(jlgrp::Union(JldFile, JldGroup), s::Step, max_step_size::Int)
+    inputs_exist(jlgrp,s) || (println(name(jlgrp), " inputs don't exist, so skipping ",s);return)
     r = range(jlgrp, s)
     length(r)>max_step_size && (r = first(r):max_step_size-first(r)%max_step_size+first(r))
     dostep(jlgrp, s, r)
@@ -162,6 +162,11 @@ function outputs_exist(jlgrp, s::Step)
     p_outs = [exists(jlgrp, name) for name in s.p_outs]
     o_outs = [exists(jlgrp, name) for name in s.o_outs]
     all(p_outs) && all(o_outs)
+end
+function inputs_exist(jlgrp, s::Step)
+    p_ins = [exists(jlgrp, name) for name in s.p_ins]
+    o_ins = [exists(jlgrp, name) for name in s.o_ins]
+    all(p_ins) && all(o_ins)
 end
 function dostep(jlgrp::Union(JldFile, JldGroup), s::ThresholdStep, max_step_size::Int)
     outputs_exist(jlgrp, s.step) && return 
