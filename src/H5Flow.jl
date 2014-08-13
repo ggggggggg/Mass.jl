@@ -1,6 +1,6 @@
 module H5Flow
 using HDF5, JLD, Logging
-import JLD: JldGroup, JldFile
+import JLD: JldGroup, JldFile, JldDataset
 import HDF5: a_read,==, read
 
 # there are three relevant things in an HDF5 file
@@ -97,14 +97,15 @@ Step(func::Function,a,b,c,d) = Step("$func",a,b,c,d)
 ==(a::Step, b::Step) = all([getfield(a,name)==getfield(b,name) for name in names(a)])
 tupleize(x::String) = (x,)
 tupleize(x) = tuple(x...)
-input_lengths(jlgrp, s::Step) = [[size(jlgrp[name])[end] for name in s.p_ins], read(jlgrp, "npulses", 0)]
+input_lengths(jlgrp, s::Step) = [input_length(jlgrp[name]) for name in s.p_ins]
+input_length(d::JldDataset) = size(d) == () ? read(d) : size(d)[end]
 # input lengths is a vector of the lengths of all the input datasets and "npulses" (with a default of 0 if it doesn't exist)
-output_lengths(jlgrp, s::Step) = length(s.p_outs) == 0 ? [1] : [[exists(jlgrp, name) ? size(jlgrp[name])[end] : 0 for name in s.p_outs]]
+output_lengths(jlgrp, s::Step) = length(s.p_outs) == 0 ? [0] : [[exists(jlgrp, name) ? size(jlgrp[name])[end] : 0 for name in s.p_outs]]
 range(jlgrp, s::Step) = minimum(output_lengths(jlgrp, s))+1:minimum(input_lengths(jlgrp,s))
 o_args(jlgrp, s::Step) = [read(jlgrp,name) for name in s.o_ins]
-p_args(jlgrp, s::Step, r::UnitRange) = [jlgrp[name][r] for name in s.p_ins]
+p_args(jlgrp, s::Step, r::UnitRange) = [size(jlgrp[name])==() ? read(jlgrp[name]) : jlgrp[name][r] for name in s.p_ins]
 args(jlgrp, s::Step, r::UnitRange) = tuple(o_args(jlgrp, s)..., p_args(jlgrp, s, r)...)
-calc_outs(jlgrp, s::Step, r::UnitRange) = getfield(Main,symbol(s.func))(r, args(jlgrp, s, r)...)
+calc_outs(jlgrp, s::Step, r::UnitRange) = getfield(Main,symbol(s.func))(args(jlgrp, s, r)...)
 function place_outs(jlgrp, s::Step, r::UnitRange, outs)
     assert(length(outs) == length(s.o_outs)+length(s.p_outs))
     for j in 1:length(s.o_outs) 
@@ -180,6 +181,25 @@ end
 function dostep(jlgrp::Union(JldFile, JldGroup), s::NothingStep, max_step_size::Int)
     debug("doing NothingStep")
 end
+immutable RangeStep <: AbstractStep
+    s::Step
+end
+RangeStep(a...) = RangeStep(Step(a...))
+function dostep(jlgrp::Union(JldFile, JldGroup), s::RangeStep, r::UnitRange)
+    starttime = tic()
+    outs = calc_outs(jlgrp, s, r)
+    elapsed = (tic()-starttime)*1e-9
+    println(name(jlgrp), " ",r, " ",elapsed," s, ", s)
+    place_outs(jlgrp, s.s, r, outs)
+end
+function dostep(jlgrp::Union(JldFile, JldGroup), s::RangeStep, max_step_size::Int)
+    inputs_exist(jlgrp,s.s) || (println(name(jlgrp), " inputs don't exist, so skipping ",s);return)
+    r = range(jlgrp, s.s)
+    length(r)>max_step_size && (r = first(r):max_step_size-first(r)%max_step_size+first(r))
+    dostep(jlgrp, s, r)
+end
+calc_outs(jlgrp, s::RangeStep, r::UnitRange) = getfield(Main,symbol(s.s.func))(r, args(jlgrp, s.s, r)...)
+
 
 function pythonize(jlgrp::JldGroup, o_ins, a_outs)
     # non per pulse "o" datasets get written as attrs
@@ -197,7 +217,7 @@ export g_require, # group stuff
        a_update, a_require, a_read, # attribute stuff
        hdf5_name_from_ljh_name, jldopen, allnames,
        close, JldGroup, JldFile, name, attrs, names,
-       Step, AbstractStep, ThresholdStep,
+       Step, AbstractStep, ThresholdStep, RangeStep,
        update!, h5steps, h5step_add
 
 end # endmodule

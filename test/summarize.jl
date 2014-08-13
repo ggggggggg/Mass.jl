@@ -9,7 +9,7 @@ h5 = jldopen(hdf5_name_from_ljh(ljhgroup2),"w")
 close(h5)
 h5 = jldopen(hdf5_name_from_ljh(ljhgroup2),"r+")
 
-function ptm_correction(r, params, ptm, ph)
+function ptm_correction(params, ptm, ph)
     ptm_offset, slope = params
     ph += (ptm.-ptm_offset).*ph
     return (ph,)
@@ -22,7 +22,7 @@ type Calibration
 	estimates::Vector{Float64}
 end
 
-function calibrate(r, pulse_rms, cuts)
+function calibrate(pulse_rms, cuts)
 	println("Calibration!!!!**!!")
 	good = !reinterpret(Bool, cuts)
 	println(length(good))
@@ -32,14 +32,14 @@ function calibrate(r, pulse_rms, cuts)
 end
 calibrate_step = Step(calibrate, [], ["pulse_rms","cuts"], "calibration/pulse_rms", [])
 
-function cuts(r, lims1, lims2, vec1, vec2)
+function cuts(lims1, lims2, vec1, vec2)
 	out = Bool[lims1[1]<v<lims1[2] for v in vec1] & Bool[lims2[1]<v<lims2[2] for v in vec2]
 	out = reinterpret(Int8, !out)
 	return (out,)
 end
 cut_step = Step(cuts, ["pretrig_rms_lims", "postpeak_deriv_lims"],["pretrig_rms","postpeak_deriv"],[],"cuts")
 
-function apply(r, cal::Calibration, pulse_rms)
+function apply(cal::Calibration, pulse_rms)
 	energy = pulse_rms.*(cal.energies[end]/cal.estimates[end])
 	return (energy,)
 end

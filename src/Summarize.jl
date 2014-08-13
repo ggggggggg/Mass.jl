@@ -185,7 +185,7 @@ end
 versioninfostr() = (s=IOBuffer();versioninfo(s);takebuf_string(s))
 
 
-function summarize(r::UnitRange,pulsefile_names,pulsefile_lengths)
+function summarize(r::UnitRange,pulsefile_names,pulsefile_lengths,npulses)
     debug("summarize")
     ljhgroup = microcal_open(pulsefile_names)
     new_lengths = lengths(ljhgroup)
@@ -195,7 +195,7 @@ function summarize(r::UnitRange,pulsefile_names,pulsefile_lengths)
     tuple(new_lengths, npulses, [getfield(pulse_summaries, n) for n in names(pulse_summaries)]...)
 end
 
-summarize_step = Step(summarize, ["pulsefile_names","pulsefile_lengths"], (), ["pulsefiles_lengths","npulses"], [string(n) for n in names(PulseSummaries)])
+summarize_step = RangeStep(summarize, ["pulsefile_names","pulsefile_lengths"], "npulses", ["pulsefiles_lengths","npulses"], [string(n) for n in names(PulseSummaries)])
 
 export summarize_step, summarize, init_channel
 end #module
