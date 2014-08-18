@@ -52,46 +52,25 @@ g["postpeak_deriv_lims"] = [typemin(Int),1]
 h5step_add(g, summarize_step)
 h5step_add(g, ptm_correction_step)
 h5step_add(g, cut_step)
+h5step_add(g, SelectingStep("pretrig_rms_lims", "pretrig_rms"))
 h5step_add(g, Mass.H5Flow.ThresholdStep("pulse_rms", 1000, calibrate_step))
 h5step_add(g, apply_calibration_step)
-for j=1:5 update!(g,300000) end
+for j=1:5 update!(g,30000) end
 
-
-import JLD: JldGroup
-selection_g_name = "selections"
-selections = ["good", "pretrig_mean", "postpeak_deriv"]
-[d_extend(g_require(g, selection_g_name),n, Uint8[1],1:1) for n in selections]
-
-selection_names(g::JldGroup) = convert(Vector{ASCIIString}, names(g[selection_g_name]))
-selection_lengths(g::JldGroup, names::Vector{ASCIIString}) = [length(g[selection_g_name][n]) for n in names]
-selection_lengths(g::JldGroup) = selection_lengths(g,selection_names(g))
-# selection_lengths(g::JldGroup) = selection_lengths(g, selection_names(g))
-#  selection_lengths(g::JldGroup, name::String) = selection_lengths(g, [ascii(name)])
-# selection_lengths(g::JldGroup, names::Vector{String}) = selection_lengths(g, convert(Vector{ASCIIString}, names))
-# selection_lengths(g::JldGroup, names...) = selection_lengths(g,[names...])
-selection_load(g::JldGroup, name::ASCIIString, r::UnitRange) = reinterpret(Vector{Bool}, g[name][r])
-selection_extend(g::JldGroup, name::ASCIIString, v::Vector{Bool}, a...) = d_extend(g, name, reinterpret(Uint8,v), a...)
-selection_read(g::JldGroup, name::ASCIIString, r::UnitRange) = reinterpret(Bool, g[name][r])
-
-l = selection_lengths(g)
-selection_extend(g, "good", [true for j=1:10],1:10)
-selection_read(g, "good", 3:5)
-
-
-getgood(g) = !reinterpret(Bool, g["cuts"][:])
-using PyPlot
-function histenergy(g)
-	energy = g["energy"][:][getgood(g)]
-	plt.hist(energy, [0:5:10000])
-	xlabel("energy (eV)")
-	ylabel("counts per 5 eV bin")
-	title(name(g))
-end
-histenergy(g)
-figure()
-plot(g["pretrig_mean"][:],".")
-figure()
-plot(g["timestamp"][:],".")
+# getgood(g) = !reinterpret(Bool, g["cuts"][:])
+# using PyPlot
+# function histenergy(g)
+# 	energy = g["energy"][:][getgood(g)]
+# 	plt.hist(energy, [0:5:10000])
+# 	xlabel("energy (eV)")
+# 	ylabel("counts per 5 eV bin")
+# 	title(name(g))
+# end
+# histenergy(g)
+# figure()
+# plot(g["pretrig_mean"][:],".")
+# figure()
+# plot(g["timestamp"][:],".")
 
 # pythonattrs = ["npulses", "mass_version", "timebase", "channel", "git_state", "julia_version","pulsefiles_names","pulsefile_lengths"]
 # Mass.H5Flow.pythonize(g,pythonattrs,pythonattrs)

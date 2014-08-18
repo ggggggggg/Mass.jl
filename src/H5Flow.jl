@@ -106,27 +106,23 @@ o_args(jlgrp, s::Step) = [read(jlgrp,name) for name in s.o_ins]
 p_args(jlgrp, s::Step, r::UnitRange) = [size(jlgrp[name])==() ? read(jlgrp[name]) : jlgrp[name][r] for name in s.p_ins]
 args(jlgrp, s::Step, r::UnitRange) = tuple(o_args(jlgrp, s)..., p_args(jlgrp, s, r)...)
 calc_outs(jlgrp, s::Step, r::UnitRange) = getfield(Main,symbol(s.func))(args(jlgrp, s, r)...)
-function place_outs(jlgrp, s::Step, r::UnitRange, outs)
+function outputs_exist(jlgrp, s::Step)
+    p_outs = [exists(jlgrp, name) for name in s.p_outs]
+    o_outs = [exists(jlgrp, name) for name in s.o_outs]
+    all(p_outs) && all(o_outs)
+end
+function inputs_exist(jlgrp, s::Step)
+    p_ins = [exists(jlgrp, name) for name in s.p_ins]
+    o_ins = [exists(jlgrp, name) for name in s.o_ins]
+    all(p_ins) && all(o_ins)
+end
+function place_outs(jlgrp, s::Step, r::UnitRange, outs::NTuple)
     assert(length(outs) == length(s.o_outs)+length(s.p_outs))
     for j in 1:length(s.o_outs) 
         update!(jlgrp, s.o_outs[j], outs[j]) end
     isempty(r) && return #dont try to place dataset outs with empty range
     for j in 1:length(s.p_outs) 
         d_extend(jlgrp, s.p_outs[j], outs[j+length(s.o_outs)], r) end
-end
-dostep(jlgrp::Union(JldFile, JldGroup), s::Step) = dostep(jlgrp, s, range(jlgrp,s))
-function dostep(jlgrp::Union(JldFile, JldGroup), s::Step, r::UnitRange)
-    starttime = tic()
-    outs = calc_outs(jlgrp, s, r)
-    elapsed = (tic()-starttime)*1e-9
-    println(name(jlgrp), " ",r, " ",elapsed," s, ", s)
-    place_outs(jlgrp, s, r, outs)
-end
-function dostep(jlgrp::Union(JldFile, JldGroup), s::Step, max_step_size::Int)
-    inputs_exist(jlgrp,s) || (println(name(jlgrp), " inputs don't exist, so skipping ",s);return)
-    r = range(jlgrp, s)
-    length(r)>max_step_size && (r = first(r):max_step_size-first(r)%max_step_size+first(r))
-    dostep(jlgrp, s, r)
 end
 h5step_add(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, n::Integer) = jlgrp["steps/$n"] = s
 function h5step_add(jlgrp::Union(JldFile, JldGroup), s::AbstractStep)
@@ -157,48 +153,86 @@ update!(jlgrp::JldGroup, max_step_size::Int) = [dostep(jlgrp, s, max_step_size) 
 immutable ThresholdStep{T<:AbstractStep} <: AbstractStep
     watched_dset::ASCIIString
     thresholdlength::Real
-    step::T
-end
-function outputs_exist(jlgrp, s::Step)
-    p_outs = [exists(jlgrp, name) for name in s.p_outs]
-    o_outs = [exists(jlgrp, name) for name in s.o_outs]
-    all(p_outs) && all(o_outs)
-end
-function inputs_exist(jlgrp, s::Step)
-    p_ins = [exists(jlgrp, name) for name in s.p_ins]
-    o_ins = [exists(jlgrp, name) for name in s.o_ins]
-    all(p_ins) && all(o_ins)
+    s::T
 end
 function dostep(jlgrp::Union(JldFile, JldGroup), s::ThresholdStep, max_step_size::Int)
-    outputs_exist(jlgrp, s.step) && return 
+    outputs_exist(jlgrp, s.s) && return 
     dsetlength = size(jlgrp[s.watched_dset])[end]
     dsetlength < s.thresholdlength && return
-    dostep(jlgrp, s.step, max_step_size)
+    dostep(jlgrp, s.s, max_step_size)
 end
 
+### Forward functions for AbstractStep to Step ###
+calc_outs(jlgrp, s::AbstractStep, r::UnitRange) = getfield(Main,symbol(s.s.func))(args(jlgrp, s.s, r)...)
+place_outs(jlgrp, s::AbstractStep, r::UnitRange, outs::NTuple) = place_outs(jlgrp, s.s, r, outs)
+place_outs(jlgrp, s::AbstractStep, r::UnitRange, outs) = place_outs(jlgrp, s, r, tuple(outs))
+dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep) = dostep(jlgrp, s, range(jlgrp,s))
+function dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, r::UnitRange)
+    println("startings $s")
+    starttime = tic()
+    outs = calc_outs(jlgrp, s, r)
+    elapsed = (tic()-starttime)*1e-9
+    println(name(jlgrp), " ",r, " ",elapsed," s, ", s)
+    place_outs(jlgrp, s, r, outs)
+end
+function dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, max_step_size::Int)
+    inputs_exist(jlgrp,s) || (println(name(jlgrp), " inputs don't exist, so skipping ",s);return)
+    r = range(jlgrp, s)
+    length(r)>max_step_size && (r = first(r):max_step_size-first(r)%max_step_size+first(r))
+    dostep(jlgrp, s, r)
+end
+inputs_exist(jlgrp, s::AbstractStep) = inputs_exist(jlgrp, s.s)
+range(jlgrp, s::AbstractStep) = range(jlgrp, s.s)
+
+### Nothing Step ###
 immutable NothingStep <: AbstractStep
 end
 function dostep(jlgrp::Union(JldFile, JldGroup), s::NothingStep, max_step_size::Int)
     debug("doing NothingStep")
 end
+### Range Step ### 
+### Range Step is a good exampleof how to create a specific type of step by overloading a few functions ###
+### Range Step is used by summarize because it passes a range arugment to the calculating function ###
+### thats how summarize knows which pulses to look at ###
 immutable RangeStep <: AbstractStep
     s::Step
 end
 RangeStep(a...) = RangeStep(Step(a...))
-function dostep(jlgrp::Union(JldFile, JldGroup), s::RangeStep, r::UnitRange)
-    starttime = tic()
-    outs = calc_outs(jlgrp, s, r)
-    elapsed = (tic()-starttime)*1e-9
-    println(name(jlgrp), " ",r, " ",elapsed," s, ", s)
-    place_outs(jlgrp, s.s, r, outs)
-end
-function dostep(jlgrp::Union(JldFile, JldGroup), s::RangeStep, max_step_size::Int)
-    inputs_exist(jlgrp,s.s) || (println(name(jlgrp), " inputs don't exist, so skipping ",s);return)
-    r = range(jlgrp, s.s)
-    length(r)>max_step_size && (r = first(r):max_step_size-first(r)%max_step_size+first(r))
-    dostep(jlgrp, s, r)
-end
 calc_outs(jlgrp, s::RangeStep, r::UnitRange) = getfield(Main,symbol(s.s.func))(r, args(jlgrp, s.s, r)...)
+### Selection Steps ###
+selection_g_name = "selections"
+selection_names(g::JldGroup) = convert(Vector{ASCIIString}, names(g[selection_g_name]))
+selection_lengths(g::JldGroup, names::Vector{ASCIIString}) = [length(g[selection_g_name][n]) for n in names]
+selection_lengths(g::JldGroup) = selection_lengths(g,selection_names(g))
+selection_extend(g::JldGroup, name::ASCIIString, v::Vector{Bool}, a...) = d_extend(g, name, reinterpret(Uint8,v), a...)
+selection_extend(g::JldGroup, name::ASCIIString, v::BitArray{1}, a...) = selection_extend(g, name, convert(Vector{Bool}, v), a...)
+selection_read(g::JldGroup, name::ASCIIString, r::UnitRange) = reinterpret(Bool, g[name][r])
+selection_read(g::JldGroup, name) = reinterpret(Bool, read(g[name])
+immutable SelectingStep <: AbstractStep
+    s::Step
+end
+SelectingStep(a::ASCIIString,b::ASCIIString) = SelectingStep(Step(select_lims,a,b,(),joinpath(selection_g_name,b)))
+function place_outs(jlgrp, s::SelectingStep, r::UnitRange, outs::NTuple)
+    println("start place outs SelectingStep")
+    assert(length(outs) == length(s.s.o_outs)+length(s.s.p_outs))
+    for j in 1:length(s.s.o_outs) 
+        update!(jlgrp, s.s.o_outs[j], outs[j]) end
+    isempty(r) && return #dont try to place dataset outs with empty range
+    for j in 1:length(s.s.p_outs) 
+        selection_extend(jlgrp, s.s.p_outs[j], outs[j+length(s.s.o_outs)], r) end
+end
+
+function select_lims(lims, v)
+    println("select lims $lims")
+    @show (size(v), typeof(v))
+    l,h = minmax(lims...)
+    l .< v .< h
+end
+immutable SelectedStep <: AbstractStep
+end
+
+
+
 
 
 function pythonize(jlgrp::JldGroup, o_ins, a_outs)
@@ -217,7 +251,7 @@ export g_require, # group stuff
        a_update, a_require, a_read, # attribute stuff
        hdf5_name_from_ljh_name, jldopen, allnames,
        close, JldGroup, JldFile, name, attrs, names,
-       Step, AbstractStep, ThresholdStep, RangeStep,
+       Step, AbstractStep, ThresholdStep, RangeStep, SelectingStep, select_lims,
        update!, h5steps, h5step_add
 
 end # endmodule
