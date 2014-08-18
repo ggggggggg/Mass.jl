@@ -165,7 +165,7 @@ end
 ### Forward functions for AbstractStep to Step ###
 calc_outs(jlgrp, s::AbstractStep, r::UnitRange) = getfield(Main,symbol(s.s.func))(args(jlgrp, s.s, r)...)
 place_outs(jlgrp, s::AbstractStep, r::UnitRange, outs::NTuple) = place_outs(jlgrp, s.s, r, outs)
-place_outs(jlgrp, s::AbstractStep, r::UnitRange, outs) = place_outs(jlgrp, s, r, tuple(outs))
+place_outs(jlgrp, s::AbstractStep, r::UnitRange, outs) = place_outs(jlgrp, s, r, tuple(outs)) # convert non-tuples
 dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep) = dostep(jlgrp, s, range(jlgrp,s))
 function dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, r::UnitRange)
     println("startings $s")
@@ -199,35 +199,45 @@ immutable RangeStep <: AbstractStep
 end
 RangeStep(a...) = RangeStep(Step(a...))
 calc_outs(jlgrp, s::RangeStep, r::UnitRange) = getfield(Main,symbol(s.s.func))(r, args(jlgrp, s.s, r)...)
-### Selection Steps ###
+
+### Selection helper functions ###
 selection_g_name = "selections"
 selection_names(g::JldGroup) = convert(Vector{ASCIIString}, names(g[selection_g_name]))
 selection_lengths(g::JldGroup, names::Vector{ASCIIString}) = [length(g[selection_g_name][n]) for n in names]
 selection_lengths(g::JldGroup) = selection_lengths(g,selection_names(g))
+selection_extend(g::JldGroup, name::ASCIIString, v::Vector{Uint8}, a...) = d_extend(g, name, v, a...)
 selection_extend(g::JldGroup, name::ASCIIString, v::Vector{Bool}, a...) = d_extend(g, name, reinterpret(Uint8,v), a...)
 selection_extend(g::JldGroup, name::ASCIIString, v::BitArray{1}, a...) = selection_extend(g, name, convert(Vector{Bool}, v), a...)
 selection_read(g::JldGroup, name::ASCIIString, r::UnitRange) = reinterpret(Bool, g[name][r])
 selection_read(g::JldGroup, name) = reinterpret(Bool, read(g[name]))
+function select_lims(lims, v)
+    l,h = minmax(lims...)
+    l .< v .< h
+end
+### SelectingStep writes Vector{Uint8} HDF5 arrays from functions that return Vector{Bool} or BitVector ###
+### SelectingStep may only have outputs of type BitVector and Vector{Bool} ###
 immutable SelectingStep <: AbstractStep
     s::Step
 end
 SelectingStep(a::ASCIIString,b::ASCIIString) = SelectingStep(Step(select_lims,a,b,(),joinpath(selection_g_name,b)))
+SelectingStepGood(a::Vector{ASCIIString}) = SelectingStep(Step(&,(),[joinpath(selection_g_name,n) for n in a],(),joinpath(selection_g_name,"good")))
 function place_outs(jlgrp, s::SelectingStep, r::UnitRange, outs::NTuple)
     println("start place outs SelectingStep")
     assert(length(outs) == length(s.s.o_outs)+length(s.s.p_outs))
+    for o in outs
+        typeof(o) <: Union(BitVector, Vector{Bool}, Vector{Uint8}) || error("SelectingStep may only have outputs of type BitVector, Vector{Bool}, Vector{Uint8}, not $(typeof(o))")
+    end    
     for j in 1:length(s.s.o_outs) 
         update!(jlgrp, s.s.o_outs[j], outs[j]) end
     isempty(r) && return #dont try to place dataset outs with empty range
     for j in 1:length(s.s.p_outs) 
         selection_extend(jlgrp, s.s.p_outs[j], outs[j+length(s.s.o_outs)], r) end
 end
-function select_lims(lims, v)
-    l,h = minmax(lims...)
-    l .< v .< h
-end
+### Selected Step uses only certain entries in the p_ins. For example if you want the pulse_rms value from only the "good" pulses ###
 immutable SelectedStep <: AbstractStep
     s::Step
 end
+
 
 
 
@@ -249,7 +259,7 @@ export g_require, # group stuff
        a_update, a_require, a_read, # attribute stuff
        hdf5_name_from_ljh_name, jldopen, allnames,
        close, JldGroup, JldFile, name, attrs, names,
-       Step, AbstractStep, ThresholdStep, RangeStep, SelectingStep, select_lims,
+       Step, AbstractStep, ThresholdStep, RangeStep, SelectingStep, SelectingStepGood, select_lims, select_and,
        update!, h5steps, h5step_add
 
 end # endmodule

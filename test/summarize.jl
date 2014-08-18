@@ -53,6 +53,8 @@ h5step_add(g, summarize_step)
 h5step_add(g, ptm_correction_step)
 h5step_add(g, cut_step)
 h5step_add(g, SelectingStep("pretrig_rms_lims", "pretrig_rms"))
+h5step_add(g, SelectingStep("postpeak_deriv_lims", "postpeak_deriv"))
+h5step_add(g, SelectingStepGood(["pretrig_rms", "postpeak_deriv"]))
 h5step_add(g, Mass.H5Flow.ThresholdStep("pulse_rms", 1000, calibrate_step))
 h5step_add(g, apply_calibration_step)
 for j=1:5 update!(g,30000) end
