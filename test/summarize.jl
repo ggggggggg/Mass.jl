@@ -56,6 +56,22 @@ h5step_add(g, Mass.H5Flow.ThresholdStep("pulse_rms", 1000, calibrate_step))
 h5step_add(g, apply_calibration_step)
 for j=1:5 update!(g,300000) end
 
+
+import JLD: JldGroup
+selection_g_name = "selections"
+selections = ["good", "pretrig_mean", "postpeak_deriv"]
+[d_extend(g_require(g, selection_g_name),n, Uint8[1],1:1) for n in selections]
+
+selection_names(g::JldGroup) = names(g[selection_g_name])
+selection_lengths(g::JldGroup, names::Vector{ASCIIString}) = [length(g[selection_g_name][n]) for n in names]
+selection_lengths(g::JldGroup) = selection_lengths(g, selection_names(g))
+selection_lengths(g::JldGroup, name::String) = selection_lengths(g, [ascii(name)])
+selection_lengths(g::JldGroup, names::Vector{String}) = selection_lengths(g, convert(Vector{ASCIIString}, names))
+selection_lengths(g::JldGroup, names...) = selection_lengths(g,[names...])
+selection_load(g::JldGroup, name::ASCIIString, r::UnitRange) = reinterpret(Vector{Bool}, g[name][r])
+selection_extend(g::JldGroup, name::ASCIIString, v::Vector{Bool}, a...) = d_extend(g, name, a...)
+
+
 getgood(g) = !reinterpret(Bool, g["cuts"][:])
 using PyPlot
 function histenergy(g)
