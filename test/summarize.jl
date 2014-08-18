@@ -25,9 +25,9 @@ end
 function calibrate(pulse_rms, cuts)
 	println("Calibration!!!!**!!")
 	good = !reinterpret(Bool, cuts)
-	println(length(good))
-	println(sum(good))
-	println(length(pulse_rms[good]))
+	@show (length(good))
+	@show (sum(good))
+	@show (length(pulse_rms[good]))
 	(Calibration(["Zero","MnKAlpha"], [0, 5898], [0,median(pulse_rms[good])]),)
 end
 calibrate_step = Step(calibrate, [], ["pulse_rms","cuts"], "calibration/pulse_rms", [])
@@ -62,14 +62,20 @@ selection_g_name = "selections"
 selections = ["good", "pretrig_mean", "postpeak_deriv"]
 [d_extend(g_require(g, selection_g_name),n, Uint8[1],1:1) for n in selections]
 
-selection_names(g::JldGroup) = names(g[selection_g_name])
+selection_names(g::JldGroup) = convert(Vector{ASCIIString}, names(g[selection_g_name]))
 selection_lengths(g::JldGroup, names::Vector{ASCIIString}) = [length(g[selection_g_name][n]) for n in names]
-selection_lengths(g::JldGroup) = selection_lengths(g, selection_names(g))
-selection_lengths(g::JldGroup, name::String) = selection_lengths(g, [ascii(name)])
-selection_lengths(g::JldGroup, names::Vector{String}) = selection_lengths(g, convert(Vector{ASCIIString}, names))
-selection_lengths(g::JldGroup, names...) = selection_lengths(g,[names...])
+selection_lengths(g::JldGroup) = selection_lengths(g,selection_names(g))
+# selection_lengths(g::JldGroup) = selection_lengths(g, selection_names(g))
+#  selection_lengths(g::JldGroup, name::String) = selection_lengths(g, [ascii(name)])
+# selection_lengths(g::JldGroup, names::Vector{String}) = selection_lengths(g, convert(Vector{ASCIIString}, names))
+# selection_lengths(g::JldGroup, names...) = selection_lengths(g,[names...])
 selection_load(g::JldGroup, name::ASCIIString, r::UnitRange) = reinterpret(Vector{Bool}, g[name][r])
-selection_extend(g::JldGroup, name::ASCIIString, v::Vector{Bool}, a...) = d_extend(g, name, a...)
+selection_extend(g::JldGroup, name::ASCIIString, v::Vector{Bool}, a...) = d_extend(g, name, reinterpret(Uint8,v), a...)
+selection_read(g::JldGroup, name::ASCIIString, r::UnitRange) = reinterpret(Bool, g[name][r])
+
+l = selection_lengths(g)
+selection_extend(g, "good", [true for j=1:10],1:10)
+selection_read(g, "good", 3:5)
 
 
 getgood(g) = !reinterpret(Bool, g["cuts"][:])
