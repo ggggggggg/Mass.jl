@@ -207,7 +207,7 @@ selection_lengths(g::JldGroup) = selection_lengths(g,selection_names(g))
 selection_extend(g::JldGroup, name::ASCIIString, v::Vector{Bool}, a...) = d_extend(g, name, reinterpret(Uint8,v), a...)
 selection_extend(g::JldGroup, name::ASCIIString, v::BitArray{1}, a...) = selection_extend(g, name, convert(Vector{Bool}, v), a...)
 selection_read(g::JldGroup, name::ASCIIString, r::UnitRange) = reinterpret(Bool, g[name][r])
-selection_read(g::JldGroup, name) = reinterpret(Bool, read(g[name])
+selection_read(g::JldGroup, name) = reinterpret(Bool, read(g[name]))
 immutable SelectingStep <: AbstractStep
     s::Step
 end
@@ -221,14 +221,12 @@ function place_outs(jlgrp, s::SelectingStep, r::UnitRange, outs::NTuple)
     for j in 1:length(s.s.p_outs) 
         selection_extend(jlgrp, s.s.p_outs[j], outs[j+length(s.s.o_outs)], r) end
 end
-
 function select_lims(lims, v)
-    println("select lims $lims")
-    @show (size(v), typeof(v))
     l,h = minmax(lims...)
     l .< v .< h
 end
 immutable SelectedStep <: AbstractStep
+    s::Step
 end
 
 
