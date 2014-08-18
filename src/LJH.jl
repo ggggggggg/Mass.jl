@@ -254,7 +254,7 @@ function Base.next{T<:UnitRange}(g::LJHGroupSlice{T}, state)
 end
 function Base.done{T<:UnitRange}(g::LJHGroupSlice{T}, state)
     filenum, pulsenum, donefilenum, donepulsenum = state
-    filenum>donefilenum || pulsenum > donepulsenum
+    filenum>donefilenum || filenum==donefilenum && pulsenum>donepulsenum 
 end
 
 

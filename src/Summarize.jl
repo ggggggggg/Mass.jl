@@ -30,14 +30,14 @@ type PulseSummaries
     end
 end
 
-function compute_summary(file::LJHGroup, r::UnitRange)
+function compute_summary(ljhgroup::LJHGroup, r::UnitRange)
     summary = PulseSummaries(length(r))
-    Nsamp = record_nsamples(file)
-    Npre = pretrig_nsamples(file)+2
+    Nsamp = record_nsamples(ljhgroup)
+    Npre = pretrig_nsamples(ljhgroup)+2
     Npost = Nsamp-Npre
-    timebase = frametime(file)
+    timebase = frametime(ljhgroup)
     post_peak_deriv_vect = zeros(Float64, Npost)
-    for (p, (data, timestamp)) in enumerate(file[r])
+    for (p, (data, timestamp)) in enumerate(ljhgroup[r])
         # Pretrigger computation first
         s = s2 = 0.0
         for j = 1:Npre
@@ -48,6 +48,7 @@ function compute_summary(file::LJHGroup, r::UnitRange)
         ptm = s/Npre
         summary.pretrig_mean[p] = ptm
         summary.pretrig_rms[p] = sqrt(s2/Npre - ptm*ptm)
+        summary.timestamp[p] = timestamp
 
         # Now post-trigger calculations
         s = s2 = 0.0
@@ -175,9 +176,9 @@ function init_channel(h5::Union(JldGroup, JldFile), ljhgroup::LJHGroup)
     g["pretrig_nsamples"] = pretrig_nsamples(ljhgroup)
     g["timebase"] = frametime(ljhgroup)
     g["channel"] = channel(ljhgroup)
-    gitstate = Pkg.Git.snapshot(dir=Pkg.dir("Mass"))
-    println("from Galen*** Ignore the Git warning, it is unrelated to Mass working")
-    g["git_state"] = [getfield(gitstate, s) for s in names(gitstate)]
+    #gitstate = Pkg.Git.snapshot(dir=Pkg.dir("Mass"))
+    #println("from Galen*** Ignore the Git warning, it is unrelated to Mass working")
+    #g["git_state"] = [getfield(gitstate, s) for s in names(gitstate)]
     g["mass_version"] = string(Pkg.installed("Mass"))
     g["julia_version"] = versioninfostr()
     g
@@ -189,13 +190,14 @@ function summarize(r::UnitRange,pulsefile_names,pulsefile_lengths,npulses)
     debug("summarize")
     ljhgroup = microcal_open(pulsefile_names)
     new_lengths = lengths(ljhgroup)
-    new_lengths[1:1-end]==pulsefile_lengths[1:1-end] || error("a lengths other than the last in $ljhgroup grew. old lengths = $pulsefiles_lengths, new lengths = $new_lengths")
+    pulsefile_lengths
+    new_lengths[1:end-1]==pulsefile_lengths[1:end-1] || error("a lengths other than the last in $ljhgroup grew. old lengths = $pulsefile_lengths, new lengths = $new_lengths")
     pulse_summaries = compute_summary(ljhgroup,r)
     npulses = length(ljhgroup)
     tuple(new_lengths, npulses, [getfield(pulse_summaries, n) for n in names(pulse_summaries)]...)
 end
 
-summarize_step = RangeStep(summarize, ["pulsefile_names","pulsefile_lengths"], "npulses", ["pulsefiles_lengths","npulses"], [string(n) for n in names(PulseSummaries)])
+summarize_step = RangeStep(summarize, ["pulsefile_names","pulsefile_lengths"], "npulses", ["pulsefile_lengths","npulses"], [string(n) for n in names(PulseSummaries)])
 
 export summarize_step, summarize, init_channel
 end #module

@@ -171,7 +171,7 @@ function inputs_exist(jlgrp, s::Step)
 end
 function dostep(jlgrp::Union(JldFile, JldGroup), s::ThresholdStep, max_step_size::Int)
     outputs_exist(jlgrp, s.step) && return 
-    @show dsetlength = size(jlgrp[s.watched_dset])[end]
+    dsetlength = size(jlgrp[s.watched_dset])[end]
     dsetlength < s.thresholdlength && return
     dostep(jlgrp, s.step, max_step_size)
 end

@@ -1,8 +1,8 @@
 using Mass
 fname1 = "/Volumes/Drobo/exafs_data/20140719_ferrioxalate_pump_probe/20140719_ferrioxalate_pump_probe_chan1.ljh"
 fname2 = "/Volumes/Drobo/exafs_data/20140720_ferrioxalate_pump_probe/20140720_ferrioxalate_pump_probe_chan1.ljh"
-ljhgroup1=microcal_open([fname1, fname2])
-ljhgroup1.ljhfiles[end-1].nrec = div(ljhgroup1.ljhfiles[end-1].nrec,2)
+ljhgroup1=microcal_open([fname1,fname2])
+ljhgroup1.ljhfiles[end].nrec = div(ljhgroup1.ljhfiles[end].nrec,2)
 ljhgroup2 = Mass.MicrocalFiles.LJHGroup(ljhgroup1.ljhfiles)
 
 h5 = jldopen(hdf5_name_from_ljh(ljhgroup2),"w")
@@ -52,7 +52,7 @@ g["postpeak_deriv_lims"] = [typemin(Int),1]
 h5step_add(g, summarize_step)
 h5step_add(g, ptm_correction_step)
 h5step_add(g, cut_step)
-h5step_add(g, Mass.H5Flow.ThresholdStep("pulse_rms", 400000, calibrate_step))
+h5step_add(g, Mass.H5Flow.ThresholdStep("pulse_rms", 1000, calibrate_step))
 h5step_add(g, apply_calibration_step)
 for j=1:5 update!(g,300000) end
 
@@ -60,12 +60,16 @@ getgood(g) = !reinterpret(Bool, g["cuts"][:])
 using PyPlot
 function histenergy(g)
 	energy = g["energy"][:][getgood(g)]
-	plt.hist(energy, [0:2:10000])
+	plt.hist(energy, [0:5:10000])
 	xlabel("energy (eV)")
-	ylabel("counts per 2 eV bin")
+	ylabel("counts per 5 eV bin")
 	title(name(g))
 end
 histenergy(g)
+figure()
+plot(g["pretrig_mean"][:],".")
+figure()
+plot(g["timestamp"][:],".")
 
 # pythonattrs = ["npulses", "mass_version", "timebase", "channel", "git_state", "julia_version","pulsefiles_names","pulsefile_lengths"]
 # Mass.H5Flow.pythonize(g,pythonattrs,pythonattrs)
