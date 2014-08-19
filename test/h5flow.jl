@@ -38,9 +38,9 @@ d_update(g,"dataset",[1:10])
 
 ### selections ###
 selections = ["good", "pretrig_mean", "postpeak_deriv"]
-[d_extend(g_require(g, selection_g_name),n, Uint8[1],1:1) for n in selections]
+[H5Flow.selection_extend(g, joinpath("selections",n), [true],1:1) for n in selections]
 a = [randbool() for j=1:30]
-assert([1 1 1] = selection_lengths(g))
-selection_extend(g, "good", a,1:30)
-assert(a ==selection_read(g, "good", 1:30))
-selection_extend(g, "good", [true for j=1:10])
+assert([1, 1, 1] == H5Flow.selection_lengths(g))
+H5Flow.selection_extend(g, "good", a,1:30)
+assert(a ==H5Flow.selection_read(g, "good", 1:30))
+H5Flow.selection_extend(g, "good", [true for j=1:10])

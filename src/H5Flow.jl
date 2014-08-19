@@ -84,6 +84,22 @@ end
 
 abstract AbstractStep
 ==(a::AbstractStep, b::AbstractStep) = typeof(a)==typeof(b) && all([getfield(a,n)==getfield(b,n) for n in names(a)])
+calc_outs(jlgrp, s::AbstractStep, r::UnitRange) = func(s)(args(jlgrp, s, r)...)
+function dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, r::UnitRange)
+    length(r)>0 || (println("$r has length < 1 so skipping $s"); return)
+    starttime = tic()
+    outs = calc_outs(jlgrp, s, r)
+    elapsed = (tic()-starttime)*1e-9
+    println(name(jlgrp), " ",r, " ",elapsed," s, ", s)
+    place_outs(jlgrp, s, r, outs)
+end
+function dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, max_step_size::Int)
+    inputs_exist(jlgrp,s) || (println(name(jlgrp), " inputs don't exist, so skipping ",s);return)
+    r = range(jlgrp, s)
+    length(r)>max_step_size && (r = first(r):max_step_size-first(r)%max_step_size+first(r))
+    dostep(jlgrp, s, r)
+end
+
 immutable Step <: AbstractStep
     func::String
     o_ins::(ASCIIString...) # other inputs
@@ -97,15 +113,14 @@ Step(func::Function,a,b,c,d) = Step("$func",a,b,c,d)
 ==(a::Step, b::Step) = all([getfield(a,name)==getfield(b,name) for name in names(a)])
 tupleize(x::String) = (x,)
 tupleize(x) = tuple(x...)
+func(s::Step) = getfield(Main, symbol(s.func))
 input_lengths(jlgrp, s::Step) = [input_length(jlgrp[name]) for name in s.p_ins]
 input_length(d::JldDataset) = size(d) == () ? read(d) : size(d)[end]
-# input lengths is a vector of the lengths of all the input datasets and "npulses" (with a default of 0 if it doesn't exist)
 output_lengths(jlgrp, s::Step) = length(s.p_outs) == 0 ? [0] : [[exists(jlgrp, name) ? size(jlgrp[name])[end] : 0 for name in s.p_outs]]
 range(jlgrp, s::Step) = minimum(output_lengths(jlgrp, s))+1:minimum(input_lengths(jlgrp,s))
 o_args(jlgrp, s::Step) = [read(jlgrp,name) for name in s.o_ins]
 p_args(jlgrp, s::Step, r::UnitRange) = [size(jlgrp[name])==() ? read(jlgrp[name]) : jlgrp[name][r] for name in s.p_ins]
 args(jlgrp, s::Step, r::UnitRange) = tuple(o_args(jlgrp, s)..., p_args(jlgrp, s, r)...)
-calc_outs(jlgrp, s::Step, r::UnitRange) = getfield(Main,symbol(s.func))(args(jlgrp, s, r)...)
 function outputs_exist(jlgrp, s::Step)
     p_outs = [exists(jlgrp, name) for name in s.p_outs]
     o_outs = [exists(jlgrp, name) for name in s.o_outs]
@@ -150,41 +165,36 @@ end
 update!(jlgrp::JldGroup) = [dostep(jlgrp, s, typemax(Int)) for s in h5steps(jlgrp)]
 update!(jlgrp::JldGroup, max_step_size::Int) = [dostep(jlgrp, s, max_step_size) for s in h5steps(jlgrp)]
 
+### Forward functions for AbstractStep to Step ###
+input_lengths(jlgrp, s::AbstractStep) = input_length(jlgrp, s.s)
+output_lengths(jlgrp, s::AbstractStep) = output_lengths(jlgrp, s.s)
+o_args(jlgrp, s::AbstractStep) = o_args(jlgrp, s.s)
+p_args(jlgrp, s::AbstractStep, r::UnitRange) = p_args(jlgrp, s.s, r)
+args(jlgrp, s::AbstractStep, r::UnitRange) = tuple(o_args(jlgrp, s)..., p_args(jlgrp, s, r)...)
+func(s::AbstractStep) = func(s.s)
+place_outs(jlgrp, s::AbstractStep, r::UnitRange, outs::NTuple) = place_outs(jlgrp, s.s, r, outs)
+place_outs(jlgrp, s::AbstractStep, r::UnitRange, outs) = place_outs(jlgrp, s, r, tuple(outs)) # convert non-tuples
+dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep) = dostep(jlgrp, s, range(jlgrp,s))
+inputs_exist(jlgrp, s::AbstractStep) = inputs_exist(jlgrp, s.s)
+outputs_exist(jlgrp, s::AbstractStep) = outputs_exist(jlgrp, s.s)
+range(jlgrp, s::AbstractStep) = range(jlgrp, s.s)
+
+### ThresholdStep waits until a JldDatset either is long enough, or its value is large enough ###
+### Then it preforms its contained step if and only if the outputs from the contained step don't exist ###
+### It is for things like calibration that need a certain amount of data, but only need to be done once ###
 immutable ThresholdStep{T<:AbstractStep} <: AbstractStep
     watched_dset::ASCIIString
     thresholdlength::Real
     s::T
 end
 function dostep(jlgrp::Union(JldFile, JldGroup), s::ThresholdStep, max_step_size::Int)
-    outputs_exist(jlgrp, s.s) && return 
+    outputs_exist(jlgrp, s) && return 
     dsetlength = size(jlgrp[s.watched_dset])[end]
     dsetlength < s.thresholdlength && return
     dostep(jlgrp, s.s, max_step_size)
 end
 
-### Forward functions for AbstractStep to Step ###
-calc_outs(jlgrp, s::AbstractStep, r::UnitRange) = getfield(Main,symbol(s.s.func))(args(jlgrp, s.s, r)...)
-place_outs(jlgrp, s::AbstractStep, r::UnitRange, outs::NTuple) = place_outs(jlgrp, s.s, r, outs)
-place_outs(jlgrp, s::AbstractStep, r::UnitRange, outs) = place_outs(jlgrp, s, r, tuple(outs)) # convert non-tuples
-dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep) = dostep(jlgrp, s, range(jlgrp,s))
-function dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, r::UnitRange)
-    println("startings $s")
-    starttime = tic()
-    outs = calc_outs(jlgrp, s, r)
-    elapsed = (tic()-starttime)*1e-9
-    println(name(jlgrp), " ",r, " ",elapsed," s, ", s)
-    place_outs(jlgrp, s, r, outs)
-end
-function dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, max_step_size::Int)
-    inputs_exist(jlgrp,s) || (println(name(jlgrp), " inputs don't exist, so skipping ",s);return)
-    r = range(jlgrp, s)
-    length(r)>max_step_size && (r = first(r):max_step_size-first(r)%max_step_size+first(r))
-    dostep(jlgrp, s, r)
-end
-inputs_exist(jlgrp, s::AbstractStep) = inputs_exist(jlgrp, s.s)
-range(jlgrp, s::AbstractStep) = range(jlgrp, s.s)
-
-### Nothing Step ###
+### NothingStep does nothing, mostly for testing purposes ###
 immutable NothingStep <: AbstractStep
 end
 function dostep(jlgrp::Union(JldFile, JldGroup), s::NothingStep, max_step_size::Int)
@@ -212,7 +222,10 @@ selection_read(g::JldGroup, name::ASCIIString, r::UnitRange) = reinterpret(Bool,
 selection_read(g::JldGroup, name) = reinterpret(Bool, read(g[name]))
 function select_lims(lims, v)
     l,h = minmax(lims...)
-    l .< v .< h
+    println(lims, " ", l, " ", h)
+    out = l .< v .< h
+    println("select_lims selected $(sum(out)) of $(length(out))")
+    out
 end
 ### SelectingStep writes Vector{Uint8} HDF5 arrays from functions that return Vector{Bool} or BitVector ###
 ### SelectingStep may only have outputs of type BitVector and Vector{Bool} ###
@@ -235,13 +248,29 @@ function place_outs(jlgrp, s::SelectingStep, r::UnitRange, outs::NTuple)
 end
 ### Selected Step uses only certain entries in the p_ins. For example if you want the pulse_rms value from only the "good" pulses ###
 immutable SelectedStep <: AbstractStep
+    selections::(ASCIIString...)
     s::Step
+    function SelectedStep(s_ins, s)
+        length(s.p_outs)==0 || error("SelectedStep may not place p_outs")
+        s_ins = tupleize([beginswith(s_in, selection_g_name)?s_in:joinpath(selection_g_name,s_in) for s_in in s_ins])
+        new(tupleize(s_ins),s)
+    end
 end
-
-
-
-
-
+SelectedStep(f,a,b,c,d) = SelectedStep(tupleize(a),Step(f,b,c,d,()))
+input_lengths(jlgrp, s::SelectedStep) = [[length(jlgrp[name]) for name in s.s_ins], input_length(jlgrp,s.selections)]
+function selection(jlgrp, s::SelectedStep, r::UnitRange)
+    # for now this just takes the first selection listed
+    # in the future I'd like to support something like "good and (pumped or unpumped)"
+    # which would selection all the pulses that are in selection good and in selection pumped or unpumped
+    length(s.selections)>1 && warn("currently SelectedStep only supports one selection, so it will only use the first of $(s.selections)")
+    selected = selection_read(jlgrp, s.selections[1], r)
+    println("$(name(jlgrp)) from selections $(s.selections) $(sum(selected)) selected pulses of $(length(selected)) possible pulses")
+    selected
+end
+function p_args(jlgrp, s::SelectedStep, r::UnitRange)
+    s_selection = selection(jlgrp, s, r)
+    [jlgrp[name][r][s_selection] for name in s.s.p_ins]
+end
 
 function pythonize(jlgrp::JldGroup, o_ins, a_outs)
     # non per pulse "o" datasets get written as attrs
@@ -260,6 +289,7 @@ export g_require, # group stuff
        hdf5_name_from_ljh_name, jldopen, allnames,
        close, JldGroup, JldFile, name, attrs, names,
        Step, AbstractStep, ThresholdStep, RangeStep, SelectingStep, SelectingStepGood, select_lims, select_and,
+       SelectedStep,
        update!, h5steps, h5step_add
 
 end # endmodule
