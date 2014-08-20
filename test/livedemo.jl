@@ -1,5 +1,5 @@
 using Mass
-fname = "/Volumes/Drobo/exafs_data/20140719_ferrioxalate_pump_probe/20140719_ferrioxalate_pump_probe_chan1.ljh"
+fname = "/Users/oneilg/Desktop/livetestljh/20140820_104348_chan1.ljh"
 ljhgroup=microcal_open(fname)
 
 h5 = jldopen(hdf5_name_from_ljh(ljhgroup),"w")
@@ -20,7 +20,7 @@ end
 function calibrate(pulse_rms)
 	println("Calibration!!!!**!!")
 	@show (length(pulse_rms))
-	(Calibration(["Zero","MnKAlpha"], [0, 5898], [0,median(pulse_rms)]),)
+	(Calibration(["Zero","median"], [0, 8000], [0,median(pulse_rms)]),)
 end
 calibrate_step = SelectedStep(calibrate, "good", [], "pulse_rms", "calibration/pulse_rms")
 

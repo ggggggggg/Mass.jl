@@ -193,7 +193,7 @@ function summarize(r::UnitRange,pulsefile_names,pulsefile_lengths,npulses)
     pulsefile_lengths
     new_lengths[1:end-1]==pulsefile_lengths[1:end-1] || error("a lengths other than the last in $ljhgroup grew. old lengths = $pulsefile_lengths, new lengths = $new_lengths")
     pulse_summaries = compute_summary(ljhgroup,r)
-    npulses = length(ljhgroup)
+    @show npulses = length(ljhgroup)
     tuple(new_lengths, npulses, [getfield(pulse_summaries, n) for n in names(pulse_summaries)]...)
 end
 

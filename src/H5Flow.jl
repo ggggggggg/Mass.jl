@@ -209,7 +209,13 @@ immutable RangeStep <: AbstractStep
 end
 RangeStep(a...) = RangeStep(Step(a...))
 calc_outs(jlgrp, s::RangeStep, r::UnitRange) = getfield(Main,symbol(s.s.func))(r, args(jlgrp, s.s, r)...)
-
+function dostep(jlgrp::Union(JldFile, JldGroup), s::RangeStep, r::UnitRange)
+    starttime = tic()
+    outs = calc_outs(jlgrp, s, r)
+    elapsed = (tic()-starttime)*1e-9
+    println(name(jlgrp), " ",r, " ",elapsed," s, ", s)
+    place_outs(jlgrp, s, r, outs)
+end
 ### Selection helper functions ###
 selection_g_name = "selections"
 selection_names(g::JldGroup) = convert(Vector{ASCIIString}, names(g[selection_g_name]))
@@ -291,6 +297,5 @@ export g_require, # group stuff
        Step, AbstractStep, ThresholdStep, RangeStep, SelectingStep, SelectingStepGood, select_lims, select_and,
        SelectedStep,
        update!, h5steps, h5step_add
-
 end # endmodule
 
