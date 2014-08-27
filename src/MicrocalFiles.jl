@@ -22,18 +22,38 @@ microcal_open(s) = LJHGroup(s) # for lists of files, I didn't bother to make it 
 
 # Given an LJH file name, return the HDF5 name
 # Generally, /x/y/z/data_taken_chan1.ljh becomes /x/y/z/data_taken_mass.hdf5
-function ljhbasename(ljhname::String)
+function ljhsplit(ljhname::String)
+    if isdir(ljhname)
+        dname = dirname(ljhname)
+        bname = last(split(dname,'/'))
+        return dname, bname
+    end
     bname,suffix = splitext(basename(ljhname))
     m = match(r"_chan\d+", bname)
-    m == nothing ? bname : bname[1:m.offset-1]
+    dirname(ljhname), m == nothing ? bname : bname[1:m.offset-1]
 end
+function ljhchannel(ljhname::String)
+    m = match(r"_chan(\d+)", ljhname)
+    m == nothing ? -1 : int(m.captures[1])
+end
+function ljhfnames(ljhname::String, chans)
+    dname, bname = ljhsplit(ljhname)
+    [joinpath(dname, "$(bname)_chan$c.ljh") for c in chans]
+end
+function ljhallchannels(ljhname::String)
+    dname, bname = ljhsplit(ljhname)
+    potential_ljh = filter!(s->(beginswith(s,bname)), readdir(dname))   
+    channels = filter!(x->x>=0,[ljhchannel(p) for p in filter!(s->beginswith(s,bname),readdir(dname))])
+    sort!(unique(channels))
+end
+ljhall(ljhname::String) = ljhfnames(ljhname, ljhallchannels(ljhname))
 hdf5_name_from_ljh(ljhgroup::LJHGroup) = hdf5_name_from_ljh(filenames(ljhgroup)...)
 function hdf5_name_from_ljh(ljhnames::String...)
-	dir = dirname(ljhnames[1])
-	fname = prod([ljhbasename(f) for f in ljhnames])
-	joinpath(dir,hdf5_name_from_ljh(fname))
+	dname, bname = ljhsplit(ljhnames[1])
+	fname = prod([ljhsplit(f)[2] for f in ljhnames])
+	joinpath(dname,hdf5_name_from_ljh(fname))
 end
-hdf5_name_from_ljh(ljhname::String) = joinpath(dirname(ljhname),ljhbasename(ljhname))*"_mass.hdf5"
+hdf5_name_from_ljh(ljhname::String) = joinpath(ljhsplit(ljhname)...)*"_mass.hdf5"
 hdf5_name_from_ljh(ljh::LJHFile) = hdf5_name_from_ljh(ljh.name)
 
 end # module
