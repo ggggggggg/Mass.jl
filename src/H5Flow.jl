@@ -172,7 +172,7 @@ update!(jlgrp::JldGroup) = [dostep(jlgrp, s, typemax(Int)) for s in h5steps(jlgr
 update!(jlgrp::JldGroup, max_step_size::Int) = [dostep(jlgrp, s, max_step_size) for s in h5steps(jlgrp)]
 chans(jld::Union(JldFile, JldGroup)) = filter!(s->beginswith(name(s), "/chan"), [g for g in jld])
 update!(jld::JldFile) = update!(jld, typemax(Int))
-update!(jld::JldFile, max_step_size::Int) = pmap(c->update!(c,max_step_size), chans(jld))
+update!(jld::JldFile, max_step_size::Int) = map(c->update!(c,max_step_size), chans(jld))
 
 ### Forward functions for AbstractStep to Step ###
 input_lengths(jlgrp, s::AbstractStep) = input_length(jlgrp, s.s)

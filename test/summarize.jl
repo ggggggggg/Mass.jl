@@ -65,3 +65,12 @@ for j=1:2 update!(h5,300000) end
 
 # pythonattrs = ["npulses", "mass_version", "timebase", "channel", "git_state", "julia_version","pulsefiles_names","pulsefile_lengths"]
 # Mass.H5Flow.pythonize(g,pythonattrs,pythonattrs)
+
+@everywhere using HDF5
+@everywhere h5 = h5open("test777.h5","w")
+for j=1:10 
+	g_create(h5,"$j")
+	h5["$j/j"]=j
+end
+map(j->read(h5["$j/j"]), names(h5))
+# pmap(j->read(h5["$j/j"]), names(h5))
