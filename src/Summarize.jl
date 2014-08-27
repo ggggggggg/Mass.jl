@@ -166,6 +166,11 @@ function max_timeseries_deriv!{T}(
     maximum(deriv)
 end
 
+
+function init_channels(h5::Union(JldGroup, JldFile), ljhname, channels)
+    fnames = ljhfnames(ljhname, channels)
+    [init_channel(h5, microcal_open(fname)) for fname in fnames]
+end
 function init_channel(h5::Union(JldGroup, JldFile), ljhgroup::LJHGroup)
     g = g_require(h5, "chan$(channel(ljhgroup))")
     H5Flow.exists(g, "pulsefile_names") && error("$g was already initialized")
@@ -199,7 +204,7 @@ end
 
 summarize_step = RangeStep(summarize, ["pulsefile_names","pulsefile_lengths"], "npulses", ["pulsefile_lengths","npulses"], [string(n) for n in names(PulseSummaries)])
 
-export summarize_step, summarize, init_channel
+export summarize_step, summarize, init_channel, init_channels
 end #module
 
 

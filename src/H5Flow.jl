@@ -139,13 +139,13 @@ function place_outs(jlgrp, s::Step, r::UnitRange, outs::NTuple)
     for j in 1:length(s.p_outs) 
         d_extend(jlgrp, s.p_outs[j], outs[j+length(s.o_outs)], r) end
 end
-h5step_add(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, n::Integer) = jlgrp["steps/$n"] = s
-function h5step_add(jlgrp::Union(JldFile, JldGroup), s::AbstractStep)
+h5step_add(jlgrp::JldGroup, s::AbstractStep, n::Integer) = jlgrp["steps/$n"] = s
+function h5step_add(jlgrp::JldGroup, s::AbstractStep)
     nums = h5stepnumbers(jlgrp)
     n = isempty(nums) ? 10 : 10*div(last(nums),10)+10
     h5step_add(jlgrp, s, n)
 end
-function h5step_del(jlgrp::Union(JldFile, JldGroup), s::AbstractStep)
+function h5step_del(jlgrp::JldGroup, s::AbstractStep)
     nums, steps = h5stepnumbers(jlgrp), h5steps(jlgrp)
     println(steps)
     del_nums = nums[steps.==s]
@@ -154,22 +154,26 @@ function h5step_del(jlgrp::Union(JldFile, JldGroup), s::AbstractStep)
     for n in del_nums delete!(jlgrp,"steps/$n") end
     nums
 end
-function h5stepnumbers(jlgrp::Union(JldFile, JldGroup))
+function h5stepnumbers(jlgrp::JldGroup)
     exists(jlgrp, "steps") || return Int[]
     nums = sort([int(name) for name in names(jlgrp["steps"])])
 end
-function h5steps(jlgrp::Union(JldFile, JldGroup))
+function h5steps(jlgrp::JldGroup)
     nums = h5stepnumbers(jlgrp)
     AbstractStep[read(jlgrp["steps"]["$n"]) for n in nums] # no check for existing because non empty nums requires existence
 end
+function h5step_add(jld::JldFile, s::AbstractStep)
+    for c in chans(jld)
+        h5step_add(c,s)
+    end
+end
+
 update!(jlgrp::JldGroup) = [dostep(jlgrp, s, typemax(Int)) for s in h5steps(jlgrp)]
 update!(jlgrp::JldGroup, max_step_size::Int) = [dostep(jlgrp, s, max_step_size) for s in h5steps(jlgrp)]
 chans(jld::Union(JldFile, JldGroup)) = filter!(s->beginswith(name(s), "/chan"), [g for g in jld])
-function update!(jld::JldFile) 
-    for c in chans(jld) 
-        update!(c)
-    end
-end
+update!(jld::JldFile) = update!(jld, typemax(Int))
+update!(jld::JldFile, max_step_size::Int) = pmap(c->update!(c,max_step_size), chans(jld))
+
 ### Forward functions for AbstractStep to Step ###
 input_lengths(jlgrp, s::AbstractStep) = input_length(jlgrp, s.s)
 output_lengths(jlgrp, s::AbstractStep) = output_lengths(jlgrp, s.s)

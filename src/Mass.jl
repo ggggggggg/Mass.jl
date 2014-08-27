@@ -5,7 +5,7 @@ include("Summarize.jl")
 using .MicrocalFiles, .H5Flow, .Summarize, Logging
 Logging.configure(level=DEBUG)
 export microcal_open, hdf5_name_from_ljh, channel, record_nsamples, pretrig_nsamples, frametime, filenames, lengths,
-	   summarize_step, summarize, init_channel, # from summarize
+	   summarize_step, summarize, init_channel, init_channels, # from summarize
 	   h5step_add, h5steps, h5stepnumbers, 
 	   H5Flow, MicrocalFiles, Summarize,
 	   g_require, # group stuff
