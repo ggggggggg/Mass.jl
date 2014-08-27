@@ -1,5 +1,5 @@
 module LJHTest
-using Mass, Base.Test
+using Mass, Mass.MicrocalFiles,Base.Test
 fnames = ["/Volumes/Drobo/exafs_data/20140719_ferrioxalate_pump_probe/20140719_ferrioxalate_pump_probe_chan$d.ljh" for d in 1:2:5]
 ljhgroup = microcal_open(fnames)
 f1,f2,f3 = ljhgroup.ljhfiles
@@ -32,4 +32,6 @@ record_nsamples(ljhgroup)
 pretrig_nsamples(ljhgroup)
 @test_throws ErrorException channel(ljhgroup)
 frametime(ljhgroup)
+
+
 end

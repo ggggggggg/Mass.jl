@@ -1,6 +1,7 @@
 module LJH
 
-export LJHGroup, LJHFile, update_num_records, channel, record_nsamples, pretrig_nsamples, frametime, filenames, lengths
+export LJHGroup, LJHFile, update_num_records, channel, record_nsamples, pretrig_nsamples, frametime, filenames, lengths,
+        column, row, num_columns, num_rows
 
 # LJH file header information
 immutable LJHHeader
@@ -12,6 +13,10 @@ immutable LJHHeader
     date             ::String
     headerSize       ::Int64
     channum          ::Uint16
+    column           ::Int16
+    row              ::Int16
+    num_columns      ::Int16
+    num_rows         ::Int16
 end
 
 # LJH file abstraction
@@ -25,10 +30,13 @@ type LJHFile
     npre             ::Int64         # nPresample
     nsamp            ::Int64         # number of sample per record
     reclength        ::Int64         # record length (bytes) including timestamp
-    channum          ::Uint16        # channel number  
+    channum          ::Uint16        # channel number 
+    column           ::Int16
+    row              ::Int16
+    num_columns      ::Int16
+    num_rows         ::Int16
     function LJHFile(name::String)
         hd = readLJHHeader(name)
-        channum = hd.channum
         dt = hd.timebase
         pre = hd.nPresamples
         tot = hd.nSamples
@@ -38,7 +46,7 @@ type LJHFile
         # assert((datalen%reclen)==0)
         nrec = div(datalen,reclen)
         seek(str,hd.headerSize)
-        new(name, str, hd, nrec, dt, pre, tot, reclen, channum)
+        new(name, str, hd, nrec, dt, pre, tot, reclen, hd.channum, hd.column, hd.row, hd.num_columns, hd.num_rows)
     end
 end
 function update_num_records(f::LJHFile)
@@ -77,9 +85,14 @@ function readLJHHeader(filename::String)
             "offset" =>"Timestamp offset (s):",
             "pre"    =>"Presamples: ",
             "tot"    =>"Total Samples: ",
-            "channum"=>"Channel: "}
+            "channum"=>"Channel: ",
+            "column"=>r"Column number .*: (\d+)",
+            "row"=>r"Row number .*: (\d+)",
+            "num_columns"=>"Number of columns:",
+            "num_rows"=>"Number of rows:"}
     nlines=0
     maxnlines=100
+    column,row, num_columns, num_rows = -1,-1,-1,-1
     date = "unknown" # If header standard for date labels changes, we don't want a hard error
 
     # Read channel # from the file name, then update that result from the header, if it exists.
@@ -94,7 +107,7 @@ function readLJHHeader(filename::String)
             headerSize = position(str)
             close(str)
             return(LJHHeader(filename,nPresamples,nSamples,
-                             timebase,timestampOffset,date,headerSize,channum))
+                             timebase,timestampOffset,date,headerSize,channum,column,row,num_columns,num_rows))
         elseif beginswith(line,labels["base"])
             timebase = float64(line[1+length(labels["base"]):end])
         elseif beginswith(line,labels["date"]) # Old LJH files
@@ -109,6 +122,16 @@ function readLJHHeader(filename::String)
             nPresamples = int64(line[1+length(labels["pre"]):end])
         elseif beginswith(line,labels["tot"])
             nSamples = int64(line[1+length(labels["tot"]):end])
+        elseif ismatch(labels["column"],line)
+            m=match(labels["column"],line)
+            column = int(m.captures[1])
+        elseif ismatch(labels["row"],line)
+            m=match(labels["row"],line)
+            row = int(m.captures[1])
+        elseif beginswith(line, labels["num_columns"])
+            num_columns = int(line[1:length(labels["num_columns"]):end])
+        elseif beginswith(line, labels["num_rows"])
+            num_rows = int(line[1:length(labels["num_rows"]):end])
         end
     end
     error("read_LJH_header: where's '$(labels["end"])' ?")
@@ -204,6 +227,10 @@ channel(g::LJHGroup) = (assert(length(fieldvalue(g, :channum))==1);g.ljhfiles[1]
 record_nsamples(g::LJHGroup) = (assert(length(fieldvalue(g, :nsamp))==1);g.ljhfiles[1].nsamp)
 pretrig_nsamples(g::LJHGroup) = (assert(length(fieldvalue(g, :npre))==1);g.ljhfiles[1].npre)
 frametime(g::LJHGroup) = (assert(length(fieldvalue(g, :dt))==1);g.ljhfiles[1].dt)
+column(g::LJHGroup) = (assert(length(fieldvalue(g, :column))==1);g.ljhfiles[1].column)
+row(g::LJHGroup) = (assert(length(fieldvalue(g, :row))==1);g.ljhfiles[1].row)
+num_columns(g::LJHGroup) = (assert(length(fieldvalue(g, :num_columns))==1);g.ljhfiles[1].num_columns)
+num_rows(g::LJHGroup) = (assert(length(fieldvalue(g, :num_rows))==1);g.ljhfiles[1].num_rows)
 filenames(g::LJHGroup) = convert(Array{ASCIIString},fieldvalue(g, :name))
 lengths(g::LJHGroup) = g.lengths
 function update_num_records(g::LJHGroup)

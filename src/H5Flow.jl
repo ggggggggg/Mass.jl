@@ -164,7 +164,12 @@ function h5steps(jlgrp::Union(JldFile, JldGroup))
 end
 update!(jlgrp::JldGroup) = [dostep(jlgrp, s, typemax(Int)) for s in h5steps(jlgrp)]
 update!(jlgrp::JldGroup, max_step_size::Int) = [dostep(jlgrp, s, max_step_size) for s in h5steps(jlgrp)]
-
+chans(jld::Union(JldFile, JldGroup)) = filter!(s->beginswith(name(s), "/chan"), [g for g in jld])
+function update!(jld::JldFile) 
+    for c in chans(jld) 
+        update!(c)
+    end
+end
 ### Forward functions for AbstractStep to Step ###
 input_lengths(jlgrp, s::AbstractStep) = input_length(jlgrp, s.s)
 output_lengths(jlgrp, s::AbstractStep) = output_lengths(jlgrp, s.s)
