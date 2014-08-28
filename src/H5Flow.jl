@@ -84,14 +84,15 @@ end
 
 abstract AbstractStep
 ==(a::AbstractStep, b::AbstractStep) = typeof(a)==typeof(b) && all([getfield(a,n)==getfield(b,n) for n in names(a)])
-calc_outs(jlgrp, s::AbstractStep, r::UnitRange) = func(s)(args(jlgrp, s, r)...)
+calc_outs(jlgrp, s::AbstractStep, r::UnitRange) = @spawn func(s)(args(jlgrp, s, r)...)
 function dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, r::UnitRange)
     length(r)>0 || (println("$r has length < 1 so skipping $s"); return)
     starttime = tic()
-    outs = calc_outs(jlgrp, s, r)
+    outsref = calc_outs(jlgrp, s, r)
     elapsed = (tic()-starttime)*1e-9
     println(name(jlgrp), " ",r, " ",elapsed," s, ", s)
-    place_outs(jlgrp, s, r, outs)
+    outsref, r
+    # place_outs(jlgrp, s, r, outs)
 end
 function dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, max_step_size::Int)
     inputs_exist(jlgrp,s) || (println(name(jlgrp), " inputs don't exist, so skipping ",s);return)
@@ -139,6 +140,7 @@ function place_outs(jlgrp, s::Step, r::UnitRange, outs::NTuple)
     for j in 1:length(s.p_outs) 
         d_extend(jlgrp, s.p_outs[j], outs[j+length(s.o_outs)], r) end
 end
+
 h5step_add(jlgrp::JldGroup, s::AbstractStep, n::Integer) = jlgrp["steps/$n"] = s
 function h5step_add(jlgrp::JldGroup, s::AbstractStep)
     nums = h5stepnumbers(jlgrp)
@@ -168,8 +170,16 @@ function h5step_add(jld::JldFile, s::AbstractStep)
     end
 end
 
-update!(jlgrp::JldGroup) = [dostep(jlgrp, s, typemax(Int)) for s in h5steps(jlgrp)]
-update!(jlgrp::JldGroup, max_step_size::Int) = [dostep(jlgrp, s, max_step_size) for s in h5steps(jlgrp)]
+function update!(jlgrp::JldGroup, max_step_size::Int)
+    for s in h5steps(jlgrp)
+        step_result = dostep(jlgrp, s, max_step_size)
+        if step_result != nothing
+            outsref, r = step_result
+            place_outs(jlgrp, s, r, fetch(outsref))
+        end
+    end
+end
+update!(jlgrp::JldGroup) = update(jlgrp, typemax(Int))
 chans(jld::Union(JldFile, JldGroup)) = filter!(s->beginswith(name(s), "/chan"), [g for g in jld])
 update!(jld::JldFile) = update!(jld, typemax(Int))
 update!(jld::JldFile, max_step_size::Int) = map(c->update!(c,max_step_size), chans(jld))
@@ -217,13 +227,14 @@ immutable RangeStep <: AbstractStep
     s::Step
 end
 RangeStep(a...) = RangeStep(Step(a...))
-calc_outs(jlgrp, s::RangeStep, r::UnitRange) = getfield(Main,symbol(s.s.func))(r, args(jlgrp, s.s, r)...)
+calc_outs(jlgrp, s::RangeStep, r::UnitRange) = @spawn getfield(Main,symbol(s.s.func))(r, args(jlgrp, s.s, r)...)
 function dostep(jlgrp::Union(JldFile, JldGroup), s::RangeStep, r::UnitRange)
     starttime = tic()
-    outs = calc_outs(jlgrp, s, r)
+    outsref = calc_outs(jlgrp, s, r)
     elapsed = (tic()-starttime)*1e-9
     println(name(jlgrp), " ",r, " ",elapsed," s, ", s)
-    place_outs(jlgrp, s, r, outs)
+    outsref, r
+    # place_outs(jlgrp, s, r, outs)
 end
 ### Selection helper functions ###
 selection_g_name = "selections"
