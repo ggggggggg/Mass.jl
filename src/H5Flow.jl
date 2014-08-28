@@ -182,7 +182,34 @@ end
 update!(jlgrp::JldGroup) = update(jlgrp, typemax(Int))
 chans(jld::Union(JldFile, JldGroup)) = filter!(s->beginswith(name(s), "/chan"), [g for g in jld])
 update!(jld::JldFile) = update!(jld, typemax(Int))
-update!(jld::JldFile, max_step_size::Int) = map(c->update!(c,max_step_size), chans(jld))
+function update!(jld::JldFile, max_step_size::Int)
+    stepnumbers = IntSet()
+    channels = chans(jld)
+    for c in channels, n in h5stepnumbers(c)
+        push!(stepnumbers, n)
+    end
+    
+    for n in stepnumbers
+        q = Dict()
+        for c in channels
+            if exists(c,"steps/$n")
+                step = read(c["steps/$n"])
+                q[c] = dostep(c, step, max_step_size)
+            end
+        end
+        for c in channels
+            step_result = get(q,c,nothing)
+            if step_result != nothing
+                outsref,r = step_result
+                step = read(c["steps/$n"])
+                place_outs(c, step, r, fetch(outsref))
+            end
+        end
+    end
+end
+
+
+
 
 ### Forward functions for AbstractStep to Step ###
 input_lengths(jlgrp, s::AbstractStep) = input_length(jlgrp, s.s)

@@ -192,7 +192,7 @@ versioninfostr() = (s=IOBuffer();versioninfo(s);takebuf_string(s))
 
 
 function summarize(r::UnitRange,pulsefile_names,pulsefile_lengths,npulses)
-    debug("summarize")
+    debug(" summarize")
     ljhgroup = microcal_open(pulsefile_names)
     new_lengths = lengths(ljhgroup)
     pulsefile_lengths
