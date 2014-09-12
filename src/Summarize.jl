@@ -169,7 +169,13 @@ end
 
 function init_channels(h5::Union(JldGroup, JldFile), ljhname, channels)
     fnames = ljhfnames(ljhname, channels)
-    [init_channel(h5, microcal_open(fname)) for fname in fnames]
+    jldgroups = Any[]
+    for fname in fnames
+	ljhgroup = microcal_open(fname)
+	push!(jldgroups, init_channel(h5, ljhgroup))
+	close(ljhgroup)
+    end
+    jldgroups
 end
 function init_channel(h5::Union(JldGroup, JldFile), ljhgroup::LJHGroup)
     g = g_require(h5, "chan$(channel(ljhgroup))")
@@ -198,7 +204,8 @@ function summarize(r::UnitRange,pulsefile_names,pulsefile_lengths,npulses)
     pulsefile_lengths
     new_lengths[1:end-1]==pulsefile_lengths[1:end-1] || error("a lengths other than the last in $ljhgroup grew. old lengths = $pulsefile_lengths, new lengths = $new_lengths")
     pulse_summaries = compute_summary(ljhgroup,r)
-    @show npulses = length(ljhgroup)
+    npulses = length(ljhgroup)
+    close(ljhgroup)
     tuple(new_lengths, npulses, [getfield(pulse_summaries, n) for n in names(pulse_summaries)]...)
 end
 

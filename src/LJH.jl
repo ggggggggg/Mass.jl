@@ -53,6 +53,8 @@ function update_num_records(f::LJHFile)
     datalen = stat(f.name).size - f.header.headerSize
     f.nrec = div(datalen,f.reclength)
 end
+Base.close(f::LJHFile) = close(f.str)
+Base.open(f::LJHFile) = f.str=open(f.name)
 
 
 type LJHSlice{T<:AbstractArray}
@@ -129,9 +131,9 @@ function readLJHHeader(filename::String)
             m=match(labels["row"],line)
             row = int(m.captures[1])
         elseif beginswith(line, labels["num_columns"])
-            num_columns = int(line[1:length(labels["num_columns"]):end])
+            num_columns = int(line[1+length(labels["num_columns"]):end])
         elseif beginswith(line, labels["num_rows"])
-            num_rows = int(line[1:length(labels["num_rows"]):end])
+            num_rows = int(line[1+length(labels["num_rows"]):end])
         end
     end
     error("read_LJH_header: where's '$(labels["end"])' ?")
@@ -222,6 +224,8 @@ LJHGroup(x) = LJHGroup(tuple([LJHFile(f) for f in x]...))
 LJHGroup(x::LJHFile) = LJHGroup(tuple(x))
 LJHGroup(x::String) = LJHGroup(LJHFile(x))
 Base.length(g::LJHGroup) = sum(g.lengths)
+Base.close(g::LJHGroup) = map(close, g.ljhfiles)
+Base.open(g::LJHGroup) = map(open, g.ljhfiles)
 fieldvalue(g::LJHGroup, s::Symbol) = unique([getfield(f, s) for f in g.ljhfiles])
 channel(g::LJHGroup) = (assert(length(fieldvalue(g, :channum))==1);g.ljhfiles[1].channum)
 record_nsamples(g::LJHGroup) = (assert(length(fieldvalue(g, :nsamp))==1);g.ljhfiles[1].nsamp)

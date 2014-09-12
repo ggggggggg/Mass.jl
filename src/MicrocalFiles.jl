@@ -3,7 +3,7 @@ include("LJH.jl")
 using .LJH
 export microcal_open, hdf5_name_from_ljh, channel, record_nsamples, pretrig_nsamples, frametime, 
 	   filenames, lengths, LJHFile, LJHGroup, column, row, num_columns, num_rows, 
-	   ljhsplit, ljhchannel, ljhfnames, ljhallchannels, ljhall
+	   ljhsplit, ljhchannel, ljhfnames, ljhallchannels, ljhall, matter_writing_status
 
 # the idea is that all microcal files should support the same interfaces, so you
 # can open any of them with microcal_open
@@ -56,5 +56,15 @@ function hdf5_name_from_ljh(ljhnames::String...)
 end
 hdf5_name_from_ljh(ljhname::String) = joinpath(ljhsplit(ljhname)...)*"_mass.hdf5"
 hdf5_name_from_ljh(ljh::LJHFile) = hdf5_name_from_ljh(ljh.name)
+
+# returns (String, Bool) representing (filename, currently_open?)
+function matter_writing_status()
+       sentinel_dir = joinpath(expanduser("~"),".daq")
+       isdir(sentinel_dir) || error("$(sentinel_dir) must be a directory")
+       sentinel_file = joinpath(sentinel_dir,"latest_ljh_pulse.cur")
+       isfile(sentinel_file) || error("$(sentinel_file) must be a file")
+       lines = map(chomp,collect(eachline(open(sentinel_file,"r"))))
+       lines[1], length(lines)==1 # the sentinel file has a second line that says closed when it has closed a file
+end
 
 end # module
