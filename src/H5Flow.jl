@@ -214,7 +214,7 @@ end
 
 
 ### Forward functions for AbstractStep to Step ###
-input_lengths(jlgrp, s::AbstractStep) = input_length(jlgrp, s.s)
+input_lengths(jlgrp, s::AbstractStep) = input_lengths(jlgrp, s.s)
 output_lengths(jlgrp, s::AbstractStep) = output_lengths(jlgrp, s.s)
 o_args(jlgrp, s::AbstractStep) = o_args(jlgrp, s.s)
 p_args(jlgrp, s::AbstractStep, r::UnitRange) = p_args(jlgrp, s.s, r)
@@ -238,7 +238,7 @@ end
 function dostep(jlgrp::Union(JldFile, JldGroup), s::ThresholdStep, max_step_size::Int)
     inputs_exist(jlgrp,s) || (println(name(jlgrp), " inputs don't exist, so skipping ",s);return)
     outputs_exist(jlgrp, s) && return 
-    dsetlength = size(jlgrp[s.watched_dset])[end]
+    dsetlength = minimum(input_lengths(jlgrp, s))
     dsetlength < s.thresholdlength && return
     dostep(jlgrp, s.s, max_step_size)
 end
@@ -300,7 +300,13 @@ function place_outs(jlgrp, s::SelectingStep, r::UnitRange, outs::NTuple)
         update!(jlgrp, s.s.o_outs[j], outs[j]) end
     isempty(r) && return #dont try to place dataset outs with empty range
     for j in 1:length(s.s.p_outs) 
-        selection_extend(jlgrp, s.s.p_outs[j], outs[j+length(s.s.o_outs)], r) end
+        selection_extend(jlgrp, s.s.p_outs[j], outs[j+length(s.s.o_outs)], r) end     
+    for j in 1:length(s.s.p_outs) 
+        counter_name = s.s.p_outs[j]*"_count"
+        previous_count = read(jlgrp, counter_name,0)
+        new_count = previous_count + sum(outs[j+length(s.s.o_outs)])
+        update!(jlgrp, counter_name, new_count)
+    end
 end
 ### Selected Step uses only certain entries in the p_ins. For example if you want the pulse_rms value from only the "good" pulses ###
 immutable SelectedStep <: AbstractStep
@@ -313,7 +319,7 @@ immutable SelectedStep <: AbstractStep
     end
 end
 SelectedStep(f,a,b,c,d) = SelectedStep(tupleize(a),Step(f,b,c,d,()))
-input_lengths(jlgrp, s::SelectedStep) = [[length(jlgrp[name]) for name in s.s_ins], input_length(jlgrp,s.selections)]
+input_lengths(jlgrp, s::SelectedStep) = [[length(jlgrp[name]) for name in s.selections], input_lengths(jlgrp,s.s)]
 function selection(jlgrp, s::SelectedStep, r::UnitRange)
     # for now this just takes the first selection listed
     # in the future I'd like to support something like "good and (pumped or unpumped)"
