@@ -202,6 +202,8 @@ function update!(jld::JldFile, max_step_size::Int)
             if step_result != nothing
                 outsref,r = step_result
                 step = read(c["steps/$n"])
+		outs = fetch(outsref)
+		typeof(outs) <: Exception && error("$outs\n the above exception occured on $step on $c")
                 place_outs(c, step, r, fetch(outsref))
             end
         end
@@ -234,6 +236,7 @@ immutable ThresholdStep{T<:AbstractStep} <: AbstractStep
     s::T
 end
 function dostep(jlgrp::Union(JldFile, JldGroup), s::ThresholdStep, max_step_size::Int)
+    inputs_exist(jlgrp,s) || (println(name(jlgrp), " inputs don't exist, so skipping ",s);return)
     outputs_exist(jlgrp, s) && return 
     dsetlength = size(jlgrp[s.watched_dset])[end]
     dsetlength < s.thresholdlength && return

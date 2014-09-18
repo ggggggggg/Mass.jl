@@ -48,7 +48,7 @@ while true
 		h5step_add(jld, SelectingStep("pretrig_rms_lims", "pretrig_rms"))
 		h5step_add(jld, SelectingStep("postpeak_deriv_lims", "postpeak_deriv"))
 		h5step_add(jld, SelectingStepGood(["pretrig_rms", "postpeak_deriv"]))
-		h5step_add(jld, Mass.H5Flow.ThresholdStep("pulse_rms", 1000, calibrate_step))
+		h5step_add(jld, Mass.H5Flow.ThresholdStep("pulse_rms", 1000, calibrate_step)) # need to make threshold on number of good pulses
 		h5step_add(jld, apply_calibration_step)
 	end
 	tnow, tlast = time(), tnow
