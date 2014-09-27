@@ -84,7 +84,7 @@ end
 
 abstract AbstractStep
 ==(a::AbstractStep, b::AbstractStep) = typeof(a)==typeof(b) && all([getfield(a,n)==getfield(b,n) for n in names(a)])
-calc_outs(jlgrp, s::AbstractStep, r::UnitRange) = @spawn func(s)(args(jlgrp, s, r)...)
+calc_outs(jlgrp, s::AbstractStep, r::UnitRange) = (a=args(jlgrp,s,r);@spawn func(s)(a...))
 function dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep, r::UnitRange)
     length(r)>0 || (println("$r has length < 1 so skipping $s"); return)
     starttime = tic()
@@ -257,7 +257,7 @@ immutable RangeStep <: AbstractStep
     s::Step
 end
 RangeStep(a...) = RangeStep(Step(a...))
-calc_outs(jlgrp, s::RangeStep, r::UnitRange) = @spawn getfield(Main,symbol(s.s.func))(r, args(jlgrp, s.s, r)...)
+calc_outs(jlgrp, s::RangeStep, r::UnitRange) = (a=args(jlgrp, s.s, r);@spawn getfield(Main,symbol(s.s.func))(r, a...))
 function dostep(jlgrp::Union(JldFile, JldGroup), s::RangeStep, r::UnitRange)
     starttime = tic()
     outsref = calc_outs(jlgrp, s, r)

@@ -1,5 +1,6 @@
-using Mass
+@everywhere using Mass
 
+@everywhere begin 
 function ptm_correction(params, ptm, ph)
     ptm_offset, slope = params
     ph += (ptm.-ptm_offset).*ph
@@ -27,7 +28,7 @@ function apply(cal::Calibration, pulse_rms)
 	return energy
 end
 apply_calibration_step = Step(apply, "calibration/pulse_rms", "pulse_rms", [], "energy")
-
+end # everywhere
 
 
 tnow, tlast = time(), time()
