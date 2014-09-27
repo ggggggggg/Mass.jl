@@ -243,6 +243,7 @@ function dostep(jlgrp::Union(JldFile, JldGroup), s::ThresholdStep, max_step_size
     dostep(jlgrp, s.s, max_step_size)
 end
 
+
 ### NothingStep does nothing, mostly for testing purposes ###
 immutable NothingStep <: AbstractStep
 end
@@ -319,7 +320,7 @@ immutable SelectedStep <: AbstractStep
     end
 end
 SelectedStep(f,a,b,c,d) = SelectedStep(tupleize(a),Step(f,b,c,d,()))
-input_lengths(jlgrp, s::SelectedStep) = [[length(jlgrp[name]) for name in s.selections], input_lengths(jlgrp,s.s)]
+input_lengths(jlgrp, s::SelectedStep) = [[read(jlgrp[name*"_count"]) for name in s.selections], input_lengths(jlgrp,s.s)]
 function selection(jlgrp, s::SelectedStep, r::UnitRange)
     # for now this just takes the first selection listed
     # in the future I'd like to support something like "good and (pumped or unpumped)"
