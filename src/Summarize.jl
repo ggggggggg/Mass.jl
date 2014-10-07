@@ -47,7 +47,7 @@ function compute_summary(ljhgroup::LJHGroup, r::UnitRange)
         end
         ptm = s/Npre
         summary.pretrig_mean[p] = ptm
-        summary.pretrig_rms[p] = sqrt(s2/Npre - ptm*ptm)
+        summary.pretrig_rms[p] = sqrt(abs(s2/Npre - ptm*ptm))
         summary.timestamp[p] = timestamp
 
         # Now post-trigger calculations
@@ -171,9 +171,7 @@ function init_channels(h5::Union(JldGroup, JldFile), ljhname, channels)
     fnames = ljhfnames(ljhname, channels)
     jldgroups = Any[]
     for fname in fnames
-	microcal_open(fname) do ljhgroup
-	push!(jldgroups, init_channel(h5, ljhgroup))
-	end #do
+	push!(jldgroups, init_channel(h5, fname))
     end
     jldgroups
 end
@@ -194,12 +192,17 @@ function init_channel(h5::Union(JldGroup, JldFile), ljhgroup::LJHGroup)
     g["julia_version"] = versioninfostr()
     g
 end
+function init_channel(h5::Union(JldGroup, JldFile), ljhname::String) 
+    microcal_open(ljhname) do ljhgroup
+	init_channel(h5, ljhgroup)
+    end
+end
+isinitialized(h5::Union(JldGroup, JldFile), channel::Int) = "/chan$(channel)/channel" in h5
 versioninfostr() = (s=IOBuffer();versioninfo(s);takebuf_string(s))
 
 
 function summarize(r::UnitRange,pulsefile_names,pulsefile_lengths,npulses)
     out = nothing
-    debug(" summarize")
     ljhgroup = microcal_open(pulsefile_names)	
     try 
     new_lengths = lengths(ljhgroup)
@@ -216,7 +219,7 @@ end
 
 summarize_step = RangeStep(summarize, ["pulsefile_names","pulsefile_lengths"], "npulses", ["pulsefile_lengths","npulses"], [string(n) for n in names(PulseSummaries)])
 
-export summarize_step, summarize, init_channel, init_channels
+export summarize_step, summarize, init_channel, init_channels, isinitialized
 end #module
 
 

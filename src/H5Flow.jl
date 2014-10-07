@@ -194,6 +194,8 @@ function update!(jld::JldFile, max_step_size::Int)
     end
     
     for n in stepnumbers
+	pulses_done = 0
+	tstart = time()
         q = Dict()
         for c in channels
             if exists(c,"steps/$n")
@@ -210,8 +212,13 @@ function update!(jld::JldFile, max_step_size::Int)
 		typeof(outs) <: Exception && error("$outs\n the above exception occured on $step on $c")
                 place_outs(c, step, r, outs)
 		pulse_steps_done += length(r)
+		pulses_done += length(r)
             end
         end
+	tend = time()
+	step = read(first(channels)["steps/$n"]) # assume all channels have same steps with same numbers
+	println("$pulses_done processed in $(tend-tstart) s, $(pulses_done/(tend-tstart)) pulses/s on $(length(channels)) channels step $step")
+
     end
     pulse_steps_done
 end
@@ -269,7 +276,7 @@ function dostep(jlgrp::Union(JldFile, JldGroup), s::RangeStep, r::UnitRange)
     starttime = tic()
     outsref = calc_outs(jlgrp, s, r)
     elapsed = (tic()-starttime)*1e-9
-    println(name(jlgrp), " ",r, " ",elapsed," s, ", s)
+    #println(name(jlgrp), " ",r, " ",elapsed," s, ", s)
     outsref, r
     # place_outs(jlgrp, s, r, outs)
 end
