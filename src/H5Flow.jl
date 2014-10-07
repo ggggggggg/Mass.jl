@@ -171,18 +171,22 @@ function h5step_add(jld::JldFile, s::AbstractStep)
 end
 
 function update!(jlgrp::JldGroup, max_step_size::Int)
+    pulse_steps = 0 # track how much work was done
     for s in h5steps(jlgrp)
         step_result = dostep(jlgrp, s, max_step_size)
         if step_result != nothing
             outsref, r = step_result
-            place_outs(jlgrp, s, r, fetch(outsref))
+            place_jlgrp(outs, s, r, fetch(outsref))
+	    pulse_steps += length(r)
         end
     end
+    pulse_steps
 end
 update!(jlgrp::JldGroup) = update(jlgrp, typemax(Int))
 chans(jld::Union(JldFile, JldGroup)) = filter!(s->beginswith(name(s), "/chan"), [g for g in jld])
 update!(jld::JldFile) = update!(jld, typemax(Int))
 function update!(jld::JldFile, max_step_size::Int)
+    pulse_steps_done = 0
     stepnumbers = IntSet()
     channels = chans(jld)
     for c in channels, n in h5stepnumbers(c)
@@ -204,10 +208,12 @@ function update!(jld::JldFile, max_step_size::Int)
                 step = read(c["steps/$n"])
 		outs = fetch(outsref)
 		typeof(outs) <: Exception && error("$outs\n the above exception occured on $step on $c")
-                place_outs(c, step, r, fetch(outsref))
+                place_outs(c, step, r, outs)
+		pulse_steps_done += length(r)
             end
         end
     end
+    pulse_steps_done
 end
 
 

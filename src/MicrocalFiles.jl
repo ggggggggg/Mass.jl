@@ -19,6 +19,14 @@ function microcal_open(s::String)
 	lowercase(ext) == ".noi" && return LJHGroup(s)
 	error("$ext is not a supported file type")
 end
+function microcal_open(f::Function, args...)
+    io = microcal_open(args...)
+    try
+	f(io)
+    finally
+	close(io)
+    end
+end
 microcal_open(s) = LJHGroup(s) # for lists of files, I didn't bother to make it able to handle other types of files, shouldn't be hard to add
 
 # Given an LJH file name, return the HDF5 name
@@ -61,9 +69,11 @@ hdf5_name_from_ljh(ljh::LJHFile) = hdf5_name_from_ljh(ljh.name)
 function matter_writing_status()
        sentinel_dir = joinpath(expanduser("~"),".daq")
        isdir(sentinel_dir) || error("$(sentinel_dir) must be a directory")
-       sentinel_file = joinpath(sentinel_dir,"latest_ljh_pulse.cur")
-       isfile(sentinel_file) || error("$(sentinel_file) must be a file")
-       lines = map(chomp,collect(eachline(open(sentinel_file,"r"))))
+       sentinel_file_path = joinpath(sentinel_dir,"latest_ljh_pulse.cur")
+       isfile(sentinel_file_path) || error("$(sentinel_file) must be a file")
+       sentinel_file = open(sentinel_file_path,"r")
+       lines = map(chomp,collect(eachline(sentinel_file)))
+       close(sentinel_file)
        lines[1], length(lines)==1 # the sentinel file has a second line that says closed when it has closed a file
 end
 

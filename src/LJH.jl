@@ -79,7 +79,7 @@ end
 
 # Get pertinent information from LJH file header and return it as LJHHeader
 function readLJHHeader(filename::String)
-    str=open(filename)
+    open(filename) do str # ensures str is closed
     labels={"base"   =>"Timebase:",
             "date"   =>"Date:",
             "date1"  =>"File First Record Time:",
@@ -107,7 +107,6 @@ function readLJHHeader(filename::String)
         nlines+=1
         if beginswith(line,labels["end"])
             headerSize = position(str)
-            close(str)
             return(LJHHeader(filename,nPresamples,nSamples,
                              timebase,timestampOffset,date,headerSize,channum,column,row,num_columns,num_rows))
         elseif beginswith(line,labels["base"])
@@ -137,6 +136,7 @@ function readLJHHeader(filename::String)
         end
     end
     error("read_LJH_header: where's '$(labels["end"])' ?")
+    end #do
 end
 
 
@@ -318,9 +318,9 @@ end
 
 # writing ljh files
 function writeLJHHeader(filename::String,dt,npre,nsamp)
-    f = open(filename, "w")
+    open(filename, "w") do f
     writeLJHHeader(f,dt,npre,nsamp)
-    close(f)
+    end #do
 end
 function writeLJHHeader(io::IO, dt, npre, nsamp)
     write(io,
@@ -379,9 +379,9 @@ Discrimination level (%%): 1.000000
     )
 end
 function writeLJHData(filename::String, a...)
-    f=open(filename, "a")
+    open(filename, "a") do f
     writeLJHData(f,a...)
-    close(f)
+    end
 end
 function writeLJHData(io::IO,traces::Array{Uint16,2}, times::Vector{Uint64})
     for j = 1:length(times)

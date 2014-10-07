@@ -76,7 +76,7 @@ function compute_summary(ljhgroup::LJHGroup, r::UnitRange)
 
         # Copy results into the PulseSummaries object
         summary.pulse_average[p] = avg
-        summary.pulse_rms[p] = sqrt(s2/Npost - avg*avg)
+        summary.pulse_rms[p] = sqrt(abs(s2/Npost - avg*avg))
         summary.rise_time[p] = rise_time
         summary.postpeak_deriv[p] = postpeak_deriv
         summary.peak_index[p] = peak_idx
@@ -171,9 +171,9 @@ function init_channels(h5::Union(JldGroup, JldFile), ljhname, channels)
     fnames = ljhfnames(ljhname, channels)
     jldgroups = Any[]
     for fname in fnames
-	ljhgroup = microcal_open(fname)
+	microcal_open(fname) do ljhgroup
 	push!(jldgroups, init_channel(h5, ljhgroup))
-	close(ljhgroup)
+	end #do
     end
     jldgroups
 end
@@ -198,15 +198,20 @@ versioninfostr() = (s=IOBuffer();versioninfo(s);takebuf_string(s))
 
 
 function summarize(r::UnitRange,pulsefile_names,pulsefile_lengths,npulses)
+    out = nothing
     debug(" summarize")
-    ljhgroup = microcal_open(pulsefile_names)
+    ljhgroup = microcal_open(pulsefile_names)	
+    try 
     new_lengths = lengths(ljhgroup)
     pulsefile_lengths
     new_lengths[1:end-1]==pulsefile_lengths[1:end-1] || error("a lengths other than the last in $ljhgroup grew. old lengths = $pulsefile_lengths, new lengths = $new_lengths")
     pulse_summaries = compute_summary(ljhgroup,r)
     npulses = length(ljhgroup)
-    close(ljhgroup)
-    tuple(new_lengths, npulses, [getfield(pulse_summaries, n) for n in names(pulse_summaries)]...)
+    out = tuple(new_lengths, npulses, [getfield(pulse_summaries, n) for n in names(pulse_summaries)]...)
+    finally
+	close(ljhgroup)
+    end #do
+    out
 end
 
 summarize_step = RangeStep(summarize, ["pulsefile_names","pulsefile_lengths"], "npulses", ["pulsefile_lengths","npulses"], [string(n) for n in names(PulseSummaries)])
