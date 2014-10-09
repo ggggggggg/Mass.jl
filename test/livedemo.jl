@@ -36,7 +36,6 @@ println("starting loop!")
 pulse_steps_done = 1 # initializat with any nonzero value
 max_chans = 240
 ljhname = ""
-
 try 
 	while true
 		old_ljhname = ljhname
@@ -45,6 +44,8 @@ try
 			try 
 				close(jld) 
 				print("closing old jld file $jld")
+			catch e
+				println(e)
 			end
 			jldname = hdf5_name_from_ljh(ljhname)
 			jld = jldopen(jldname, "w")
