@@ -1,5 +1,7 @@
 module Summarize
 using ..H5Flow, ..MicrocalFiles, Logging
+using ArrayViews
+
 type PulseSummaries
     pretrig_mean      ::Vector{Float64}
     pretrig_rms       ::Vector{Float64}
@@ -29,7 +31,6 @@ type PulseSummaries
             postpeak_deriv, timestamp, peak_index, peak_value, min_value)
     end
 end
-
 function compute_summary(ljhgroup::LJHGroup, r::UnitRange)
     summary = PulseSummaries(length(r))
     Nsamp = record_nsamples(ljhgroup)
@@ -41,9 +42,9 @@ function compute_summary(ljhgroup::LJHGroup, r::UnitRange)
         # Pretrigger computation first
         s = s2 = 0.0
         for j = 1:Npre
-            d = data[j]
-            s += d
-            s2 += d*d
+            d=data[j]
+            s+=d
+            s2+=d*d
         end
         ptm = s/Npre
         summary.pretrig_mean[p] = ptm
@@ -55,21 +56,21 @@ function compute_summary(ljhgroup::LJHGroup, r::UnitRange)
         peak_idx = 0
         peak_val = uint16(0)
         for j = Npre+1:Nsamp
-            d = data[j]
+            d=data[j]
             if d > peak_val 
                 peak_idx, peak_val = j, d
             end
-            d = d-ptm
-            s += d
-            s2 += d^2
+            d2=d-ptm
+            s+=d2
+            s2+=d2*d2
         end
         avg = s/Npost
 
-        posttrig_data = sub(data,Npre+2:endof(data))
+        posttrig_data = view(data,Npre+2:Nsamp)
         rise_time::Float64 = estimate_rise_time(posttrig_data, peak_idx-Npre-2,
                                        peak_val, ptm, timebase)
 
-        postpeak_data = data[peak_idx+1:end]
+        postpeak_data = view(data, peak_idx+1:Nsamp)
         const reject_spikes=true
         postpeak_deriv::Float64 = max_timeseries_deriv!(
             post_peak_deriv_vect, postpeak_data, reject_spikes)
@@ -107,14 +108,14 @@ end
 # Estimate the derivative (units of arbs / sample) for a pulse record or other timeseries.
 # This version uses the default kernel of [-2,-1,0,1,2]/10.0
 #
-max_timeseries_deriv!(deriv, pulserecord::Array, reject_spikes::Bool) =
+max_timeseries_deriv!(deriv, pulserecord, reject_spikes::Bool) =
     max_timeseries_deriv!(deriv, pulserecord, convert(Vector{eltype(deriv)},[.2 : -.1 : -.2]), reject_spikes)
 
 
 # Post-peak derivative computed using Savitzky-Golay filter of order 3
 # and fitting 1 point before...3 points after.
 #
-max_timeseries_deriv_SG!(deriv, pulserecord::Vector, reject_spikes::Bool) =
+max_timeseries_deriv_SG!(deriv, pulserecord, reject_spikes::Bool) =
     max_timeseries_deriv!(deriv, pulserecord, [-0.11905, .30952, .28572, -.02381, -.45238],
                             reject_spikes)
 
@@ -130,7 +131,7 @@ max_timeseries_deriv_SG!(deriv, pulserecord::Vector, reject_spikes::Bool) =
 #
 function max_timeseries_deriv!{T}(
         deriv::Vector{T},       # Modified! Pre-allocate an array of sufficient length
-        pulserecord::Vector, # The pulse record (presumably starting at the pulse peak)
+        pulserecord, # The pulse record (presumably starting at the pulse peak)
         kernel::Vector{T},      # The convolution kernel that estimates derivatives
         reject_spikes::Bool  # Whether to employ the spike-rejection test
         )
