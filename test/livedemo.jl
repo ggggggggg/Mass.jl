@@ -36,34 +36,41 @@ println("starting loop!")
 pulse_steps_done = 1 # initializat with any nonzero value
 max_chans = 240
 ljhname = ""
+jld = nothing
 try 
 	while true
 		old_ljhname = ljhname
 		ljhname, ljhopen = MicrocalFiles.matter_writing_status()
 		if old_ljhname != ljhname
-			try 
+			if jld != nothing 
 				close(jld) 
 				print("closing old jld file $jld")
-			catch e
-				println(e)
 			end
 			jldname = hdf5_name_from_ljh(ljhname)
+			#isfile(jldname) && error("$jldname already exists")
 			jld = jldopen(jldname, "w")
 			println("opening new jld file $jld")
 
-	    end
+	        end
 		chans_to_init = 1:2:2*max_chans
 		cg = init_channels(jld, ljhname, chans_to_init)
-		length(cg)>0 && println("initilizeing $(length(cg)) channels in $jld")
-		for chan in cg h5step_add(chan, summarize_step) end
+		length(cg)>0 && println("initializing $(length(cg)) channels in $jld")
+		for chan in cg 
+		    h5step_add(chan, summarize_step) 
+		end
 
 		tnow, tlast = time(), tnow
-		sleeptime = 0.1-(tnow-tlast)
+		sleeptime = 5-(tnow-tlast)
 		sleeptime > 0 && sleep(sleeptime)
 		pulse_steps_done = update!(jld,10000) # does the majority of the processing
 
 	end
-
+catch e
+        if isa(e, InteruptException)
+		println("closing kinda gracefully")
+	else 
+		throw(e)
+	end
 finally
 	close(jld)
 end

@@ -172,7 +172,7 @@ function init_channels(jld::Union(JldGroup, JldFile), ljhname, channels)
     fnames = ljhfnames(ljhname, channels)
     jldgroups = Any[]
     for (fname, channel) in zip(fnames, channels)
-	   isinitialized(jld, channel) || push!(jldgroups, init_channel(jld, fname))
+	   !isinitialized(jld, channel) && isfile(fname) && push!(jldgroups, init_channel(jld, fname))
     end
     jldgroups
 end
@@ -193,6 +193,7 @@ function init_channel(jld::Union(JldGroup, JldFile), ljhgroup::LJHGroup)
     g["julia_version"] = versioninfostr()
     g
 end
+
 function init_channel(jld::Union(JldGroup, JldFile), ljhname::String) 
     microcal_open(ljhname) do ljhgroup
 	init_channel(jld, ljhgroup)
