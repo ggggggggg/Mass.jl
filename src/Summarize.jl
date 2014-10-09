@@ -168,16 +168,16 @@ function max_timeseries_deriv!{T}(
 end
 
 
-function init_channels(h5::Union(JldGroup, JldFile), ljhname, channels)
+function init_channels(jld::Union(JldGroup, JldFile), ljhname, channels)
     fnames = ljhfnames(ljhname, channels)
     jldgroups = Any[]
-    for fname in fnames
-	push!(jldgroups, init_channel(h5, fname))
+    for (fname, channel) in zip(fnames, channels)
+	   isinitialized(jld, channel) || push!(jldgroups, init_channel(jld, fname))
     end
     jldgroups
 end
-function init_channel(h5::Union(JldGroup, JldFile), ljhgroup::LJHGroup)
-    g = g_require(h5, "chan$(channel(ljhgroup))")
+function init_channel(jld::Union(JldGroup, JldFile), ljhgroup::LJHGroup)
+    g = g_require(jld, "chan$(channel(ljhgroup))")
     H5Flow.exists(g, "pulsefile_names") && error("$g was already initialized")
     g["pulsefile_names"] = filenames(ljhgroup)
     g["pulsefile_lengths"] = lengths(ljhgroup)
@@ -193,12 +193,12 @@ function init_channel(h5::Union(JldGroup, JldFile), ljhgroup::LJHGroup)
     g["julia_version"] = versioninfostr()
     g
 end
-function init_channel(h5::Union(JldGroup, JldFile), ljhname::String) 
+function init_channel(jld::Union(JldGroup, JldFile), ljhname::String) 
     microcal_open(ljhname) do ljhgroup
-	init_channel(h5, ljhgroup)
+	init_channel(jld, ljhgroup)
     end
 end
-isinitialized(h5::Union(JldGroup, JldFile), channel::Int) = "/chan$(channel)/channel" in h5
+isinitialized(jld::Union(JldGroup, JldFile), channel::Int) = H5Flow.exists(jld, "chan$channel")
 versioninfostr() = (s=IOBuffer();versioninfo(s);takebuf_string(s))
 
 
