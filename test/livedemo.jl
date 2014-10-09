@@ -35,31 +35,34 @@ tstart = time()
 println("starting loop!")
 pulse_steps_done = 1 # initializat with any nonzero value
 max_chans = 240
-while true
-	ljhname, ljhopen = MicrocalFiles.matter_writing_status()
-	jldname = hdf5_name_from_ljh(ljhname)
-	if !isfile(jldname)
-		jldopen(jldname,"w") do jld
-		chans_to_init = 1:2:2*max_chans
-		println("initialized file $ljhname channels $chans_to_init")
-		cg = init_channels(jld, ljhname, chans_to_init)
-		h5step_add(jld, summarize_step)
-		end
-        end
-	tnow, tlast = time(), tnow
-	sleeptime = 1-(tnow-tlast)
-	sleeptime > 0 && sleep(sleeptime)
-	jld = jldopen(jldname,"r+")
-	if ljhopen
-		pulse_steps_done = update!(jld,10000) # does the majority of the processing
-		println("update! $pulse_steps_done pulse steps done")
-	else
-	    if pulse_steps_done > 0
-		println("update! $pulse_steps_done pulse steps done. no ljh open, just trying to finish $jld")
-		pulse_steps_done = update!(jld,10000) # does the majority of the processing
-    	    else 	
-		println("matter says no ljh is open, and pulse_steps_done = 0 last ljh was $ljhname")
+ljhname = ""
+
+try 
+	while true
+		old_ljhname = ljhname
+		ljhname, ljhopen = MicrocalFiles.matter_writing_status()
+		if old_ljhname != ljhname
+			try 
+				close(jld) 
+				print("closing old jld file $jld")
+			end
+			jldname = hdf5_name_from_ljh(ljhname)
+			jld = jldopen(jldname, "w")
+			println("opening new jld file $jld")
+
 	    end
+		chans_to_init = 1:2:2*max_chans
+		cg = init_channels(jld, ljhname, chans_to_init)
+		length(cg)>0 println("initilizeing $(length(cg) channels in $jld")
+		for chan in cg h5step_add(chan, summarize_step) end
+
+		tnow, tlast = time(), tnow
+		sleeptime = 0.1-(tnow-tlast)
+		sleeptime > 0 && sleep(sleeptime)
+		pulse_steps_done = update!(jld,10000) # does the majority of the processing
+
 	end
+
+finally
 	close(jld)
 end
