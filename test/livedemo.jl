@@ -53,7 +53,7 @@ try
 	    end
 		chans_to_init = 1:2:2*max_chans
 		cg = init_channels(jld, ljhname, chans_to_init)
-		length(cg)>0 println("initilizeing $(length(cg) channels in $jld")
+		length(cg)>0 && println("initilizeing $(length(cg) channels in $jld")
 		for chan in cg h5step_add(chan, summarize_step) end
 
 		tnow, tlast = time(), tnow
