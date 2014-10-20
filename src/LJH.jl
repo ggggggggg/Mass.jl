@@ -147,21 +147,20 @@ function fileRecords(f::LJHFile, nrec::Integer,
                      times::Vector{Uint64}, data::Matrix{Uint16})
     #assert(nrec <= min(length(times),size(data,2)) && size(data,1)==f.nsamp)
     for i=1:nrec
-        times[i] = recordTime(read(f.str, Uint8, 6))
+        times[i] = record_row_count(read(f.str, Uint8, 6), f.num_rows, f.row, f.dt)
         data[:,i] = read(f.str, Uint16, f.nsamp)
     end
 end
-
 LJHRewind(f::LJHFile) = seek(f.str, f.header.headerSize)
 
 
 # Read specific record numbers and for each return time and samples;
 # (error if eof occurs or insufficient space in data)
 function fileRecords(f::LJHFile, recIndices::Vector{Int},
-                     times::Vector{Uint64}, data::Matrix{Uint16})
+                     row_counts::Vector{Uint64}, data::Matrix{Uint16})
     for i = 1:length(recIndices)
         seekto(f,recIndices[i])
-        times[i] = recordTime(read(f.str, Uint8, 6))
+        row_counts[i] = record_row_count(read(f.str, Uint8, 6), f.num_rows, f.row, f.dt)
         data[:,i] = read(f.str, Uint16, f.nsamp)
     end
 end
@@ -174,9 +173,9 @@ function Base.getindex(f::LJHFile,index::Int)
     pop!(f)
 end
 function Base.pop!(f::LJHFile)
-    timestamp =  recordTime(read(f.str, Uint8, 6))
+    row_count =  record_row_count(read(f.str, Uint8, 6), f.num_rows, f.row, f.dt)
     data = read(f.str, Uint16, f.nsamp)
-    data, timestamp
+    data, row_count
 end
 
 Base.size(f::LJHFile) = (f.nrec,)
@@ -298,6 +297,21 @@ function recordTime(header::Vector{Uint8})
          (uint64(header[5])<<16) |
          (uint64(header[6])<<24)
     return ms*1000 + frac*4
+end
+
+function record_row_count(header::Vector{Uint8}, num_rows::Integer, row::Integer, frame_time::Float64)
+    frac = uint64(header[1])
+    ms = uint64(header[3]) |
+         (uint64(header[4])<<8) |
+         (uint64(header[5])<<16) |
+         (uint64(header[6])<<24)
+    count_4usec = uint64(ms*250+frac)
+    ns_per_frame = uint64(frame_time*1e9)
+    ns_per_4sec = uint64(4000)
+    count_frame, r = divrem(count_4usec*ns_per_4sec,ns_per_frame) # can replace with cld in julia 0.4
+    count_frame::Uint64 += r>0 ? 1 : 0  
+    count_row = count_frame*num_rows+row
+    return count_row
 end
 
 # Six-byte pulse record header (LJH version 2.1.0), given time in microseconds

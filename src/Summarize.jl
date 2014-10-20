@@ -36,51 +36,60 @@ function compute_summary(ljhgroup::LJHGroup, r::UnitRange)
     Nsamp = record_nsamples(ljhgroup)
     Npre = pretrig_nsamples(ljhgroup)+2
     Npost = Nsamp-Npre
-    timebase = frametime(ljhgroup)
     post_peak_deriv_vect = zeros(Float64, Npost)
-    for (p, (data, timestamp)) in enumerate(ljhgroup[r])
+    frame_time = frametime(ljhgroup)
+    row_time = frame_time/num_rows(ljhgroup)
+    for (p, (data, row_count)) in enumerate(ljhgroup[r])
         # Pretrigger computation first
         s = s2 = 0.0
+        min_idx = 0
+        peak_idx = 0
+        peak_val = uint16(0)
+        min_idx = 0
+        min_val = typemax(Uint16)
         for j = 1:Npre
             d=data[j]
+            if d > peak_val 
+                peak_idx, peak_val = j, d
+            elseif d < min_val
+                min_idx, min_val = j,d
+            end
             s+=d
             s2+=d*d
         end
         ptm = s/Npre
         summary.pretrig_mean[p] = ptm
         summary.pretrig_rms[p] = sqrt(abs(s2/Npre - ptm*ptm))
-        summary.timestamp[p] = timestamp
+        summary.timestamp[p] = row_count*row_time + 3*frame_time #the 3* part is to match mass and account for the 4 point trigger algorithm
 
         # Now post-trigger calculations
         s = s2 = 0.0
-        peak_idx = 0
-        peak_val = uint16(0)
         for j = Npre+1:Nsamp
             d=data[j]
             if d > peak_val 
                 peak_idx, peak_val = j, d
+            elseif d < min_val
+                min_idx, min_val = j,d
             end
-            d2=d-ptm
-            s+=d2
-            s2+=d2*d2
+            # d2=d-ptm
+            s+=d
+            s2+=d*d
         end
-        avg = s/Npost
 
-        posttrig_data = view(data,Npre+2:Nsamp)
-        rise_time::Float64 = estimate_rise_time(posttrig_data, peak_idx-Npre-2,
-                                       peak_val, ptm, timebase)
+        posttrig_data = view(data,Npre:Nsamp)
+        rise_time::Float64, deriv_start = estimate_rise_time(posttrig_data, peak_idx+Npre,
+                                       peak_val, ptm, frame_time)
 
-        postpeak_data = view(data, peak_idx+1:Nsamp)
-        const reject_spikes=true
-        postpeak_deriv::Float64 = max_timeseries_deriv!(
-            post_peak_deriv_vect, postpeak_data, reject_spikes)
+        postpeak_data = view(data, deriv_start+Npre:Nsamp)
+        postpeak_deriv = max_timeseries_deriv_simple(postpeak_data)
 
         # Copy results into the PulseSummaries object
-        summary.pulse_average[p] = avg
-        summary.pulse_rms[p] = sqrt(abs(s2/Npost - avg*avg))
+        summary.pulse_average[p] = s/Npost-ptm
+        summary.pulse_rms[p] = sqrt(abs(s2/Npost - ptm*(ptm+2*summary.pulse_average[p])))
         summary.rise_time[p] = rise_time
         summary.postpeak_deriv[p] = postpeak_deriv
         summary.peak_index[p] = peak_idx
+        summary.min_value[p] = min_val
         if peak_val > ptm
             summary.peak_value[p] = peak_val - uint16(ptm)
         else
@@ -97,12 +106,16 @@ function estimate_rise_time(pulserecord, peakindex::Integer,peakval,ptm,frametim
     idx90 = peakindex
     thresh10 = 0.1*(peakval-ptm)+ptm
     thresh90 = 0.9*(peakval-ptm)+ptm
-    for j = 2:peakindex
+    for j = 1:peakindex
         pulserecord[j] < thresh10 && (idx10 = j)
-        pulserecord[j] > thresh90 && (idx90 = j-1)
+        if pulserecord[j] > thresh90 
+            (idx90 = j-1)
+            break
+        end
     end
     dt = (idx90-idx10)*frametime
-    dt * (peakval-ptm) / (pulserecord[idx90]-pulserecord[idx10])
+    rise_time = dt * (peakval-ptm) / (pulserecord[idx90]-pulserecord[idx10])
+    rise_time, idx90+(idx90-idx10) # 2nd return is estimate of peak location
 end
 
 # Estimate the derivative (units of arbs / sample) for a pulse record or other timeseries.
@@ -144,11 +157,10 @@ function max_timeseries_deriv!{T}(
     if Nk+4 > N
         reject_spikes = false
     end
-
+    fill!(deriv, zero(eltype(deriv)))
     for i=1:N-Nk+1
-        deriv[i] = 0
         for j=1:Nk
-            deriv[i] += pulserecord[i+Nk-j]*kernel[j]
+            deriv[i] += pulserecord[i+Nk-j]*kernel[j] #float
         end
     end
     for i=N-Nk+2:length(deriv)
@@ -167,6 +179,14 @@ function max_timeseries_deriv!{T}(
     maximum(deriv)
 end
 
+function max_timeseries_deriv_simple(pulserecord)
+    max_deriv = realmin(Float64)
+    for j = 1:length(pulserecord)-1
+        deriv = float(pulserecord[j+1])-float(pulserecord[j])
+        deriv > max_deriv && (max_deriv = deriv)
+    end
+    max_deriv
+end
 
 function init_channels(jld::Union(JldGroup, JldFile), ljhname, channels)
     fnames = ljhfnames(ljhname, channels)
