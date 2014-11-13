@@ -109,6 +109,7 @@ immutable Step <: AbstractStep
     p_outs::(ASCIIString...) # per pulse outputs
     Step(func,a,b,c,d) = new(func, tupleize(a), tupleize(b), tupleize(c), tupleize(d))
 end
+Base.show(io::IO, s::Step) = print(io, "Step with function $(s.func), other inputs $(s.o_ins), per pulse inputs $(s.p_ins), other outputs $(s.o_outs), per pulse outputs $(s.p_outs)")
 Step(func::Symbol,a,b,c,d) = Step(string(func),a,b,c,d)
 Step(func::Function,a,b,c,d) = Step("$func",a,b,c,d)
 ==(a::Step, b::Step) = all([getfield(a,name)==getfield(b,name) for name in names(a)])
@@ -117,8 +118,10 @@ tupleize(x) = tuple(x...)
 func(s::Step) = getfield(Main, symbol(s.func))
 input_lengths(jlgrp, s::Step) = [input_length(jlgrp[name]) for name in s.p_ins]
 input_length(d::JldDataset) = size(d) == () ? read(d) : size(d)[end]
-output_lengths(jlgrp, s::Step) = length(s.p_outs) == 0 ? [0] : [[exists(jlgrp, name) ? size(jlgrp[name])[end] : 0 for name in s.p_outs]]
-range(jlgrp, s::Step) = minimum(output_lengths(jlgrp, s))+1:minimum(input_lengths(jlgrp,s))
+function output_lengths(jlgrp, s::Step)
+    length(s.p_outs) == 0 && (return [0])
+    [[!exists(jlgrp, name) ? 0 : (size(jlgrp[name])==() ? read(jlgrp[name]) : size(jlgrp[name])[end]) for name in s.p_outs]]
+end
 o_args(jlgrp, s::Step) = [read(jlgrp,name) for name in s.o_ins]
 p_args(jlgrp, s::Step, r::UnitRange) = [size(jlgrp[name])==() ? read(jlgrp[name]) : jlgrp[name][r] for name in s.p_ins]
 args(jlgrp, s::Step, r::UnitRange) = tuple(o_args(jlgrp, s)..., p_args(jlgrp, s, r)...)
@@ -138,7 +141,13 @@ function place_outs(jlgrp, s::Step, r::UnitRange, outs::NTuple)
         update!(jlgrp, s.o_outs[j], outs[j]) end
     isempty(r) && return #dont try to place dataset outs with empty range
     for j in 1:length(s.p_outs) 
-        d_extend(jlgrp, s.p_outs[j], outs[j+length(s.o_outs)], r) end
+        out = outs[j+length(s.o_outs)]
+        if typeof(out)<:Int
+            update!(jlgrp, s.p_outs[j], out)
+        else
+            d_extend(jlgrp, s.p_outs[j], out, r) 
+        end
+    end
 end
 
 h5step_add(jlgrp::JldGroup, s::AbstractStep, n::Integer) = jlgrp["steps/$n"] = s
@@ -208,16 +217,16 @@ function update!(jld::JldFile, max_step_size::Int)
             if step_result != nothing
                 outsref,r = step_result
                 step = read(c["steps/$n"])
-		outs = fetch(outsref)
-		typeof(outs) <: Exception && error("$outs\n the above exception occured on $step on $c")
+        		outs = fetch(outsref)
+        		typeof(outs) <: Exception && error("$outs\n the above exception occured on $step on $c")
                 place_outs(c, step, r, outs)
-		pulse_steps_done += length(r)
-		pulses_done += length(r)
+        		pulse_steps_done += length(r)
+        		pulses_done += length(r)
             end
         end
 	tend = time()
 	step = read(first(channels)["steps/$n"]) # assume all channels have same steps with same numbers
-	println("$pulses_done processed in $(tend-tstart) s, $(pulses_done/(tend-tstart)) pulses/s on $(length(channels)) channels step $step")
+	println("stepnumber $n, $pulses_done processed in $(tend-tstart) s, $(pulses_done/(tend-tstart)) pulses/s on $(length(channels)) channels step $step")
 
     end
     pulse_steps_done
@@ -238,7 +247,7 @@ place_outs(jlgrp, s::AbstractStep, r::UnitRange, outs) = place_outs(jlgrp, s, r,
 dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep) = dostep(jlgrp, s, range(jlgrp,s))
 inputs_exist(jlgrp, s::AbstractStep) = inputs_exist(jlgrp, s.s)
 outputs_exist(jlgrp, s::AbstractStep) = outputs_exist(jlgrp, s.s)
-range(jlgrp, s::AbstractStep) = range(jlgrp, s.s)
+range(jlgrp, s::AbstractStep) = minimum(output_lengths(jlgrp, s))+1:minimum(input_lengths(jlgrp,s))
 
 ### ThresholdStep waits until a JldDatset either is long enough, or its value is large enough ###
 ### Then it preforms its contained step if and only if the outputs from the contained step don't exist ###
@@ -305,7 +314,6 @@ end
 SelectingStep(a::ASCIIString,b::ASCIIString) = SelectingStep(Step(select_lims,a,b,(),joinpath(selection_g_name,b)))
 SelectingStepGood(a::Vector{ASCIIString}) = SelectingStep(Step(&,(),[joinpath(selection_g_name,n) for n in a],(),joinpath(selection_g_name,"good")))
 function place_outs(jlgrp, s::SelectingStep, r::UnitRange, outs::NTuple)
-    println("start place outs SelectingStep")
     assert(length(outs) == length(s.s.o_outs)+length(s.s.p_outs))
     for o in outs
         typeof(o) <: Union(BitVector, Vector{Bool}, Vector{Uint8}) || error("SelectingStep may only have outputs of type BitVector, Vector{Bool}, Vector{Uint8}, not $(typeof(o))")
@@ -326,14 +334,14 @@ end
 immutable SelectedStep <: AbstractStep
     selections::(ASCIIString...)
     s::Step
+    num_seen_name::ASCIIString
     function SelectedStep(s_ins, s)
-        length(s.p_outs)==0 || error("SelectedStep may not place p_outs")
+        length(s.p_outs)==0 || error("SelectedStep p_outs must be a single integer")
         s_ins = tupleize([beginswith(s_in, selection_g_name)?s_in:joinpath(selection_g_name,s_in) for s_in in s_ins])
-        new(tupleize(s_ins),s)
+        new(tupleize(s_ins),s,selection_g_name*string(hash(s)))
     end
 end
-SelectedStep(f,a,b,c,d) = SelectedStep(tupleize(a),Step(f,b,c,d,()))
-input_lengths(jlgrp, s::SelectedStep) = [[read(jlgrp[name*"_count"]) for name in s.selections], input_lengths(jlgrp,s.s)]
+SelectedStep(f,a,b,c,d,e) = SelectedStep(tupleize(a),Step(f,b,c,d,e))
 function selection(jlgrp, s::SelectedStep, r::UnitRange)
     # for now this just takes the first selection listed
     # in the future I'd like to support something like "good and (pumped or unpumped)"
@@ -347,6 +355,13 @@ function p_args(jlgrp, s::SelectedStep, r::UnitRange)
     s_selection = selection(jlgrp, s, r)
     [jlgrp[name][r][s_selection] for name in s.s.p_ins]
 end
+function place_outs(jlgrp, s::SelectedStep, r::UnitRange, outs::NTuple)
+    place_outs(jlgrp, s.s, r, outs)
+    num_seen = read(jlgrp, s.num_seen_name, 0) + length(r)
+    update!(jlgrp, s.num_seen_name, num_seen)
+end
+output_lengths(jlgrp, s::SelectedStep) = [[read(jlgrp, s.num_seen_name, 0)]]
+
 
 function pythonize(jlgrp::JldGroup, o_ins, a_outs)
     # non per pulse "o" datasets get written as attrs

@@ -30,44 +30,6 @@ end
 apply_calibration_step = Step(apply, "calibration/pulse_rms", "pulse_rms", [], "energy")
 
 
-function polyfit(x, y, n)
-  A = [ float(x[i])^p for i = 1:length(x), p = 0:n ]
-  A \ y
-end
-
-function polyval(x::Number,p)
-	out = zero(Float64)
-	n=0
-	for c in p
-		out+=c*x^n
-		n+=1
-	end
-	out
-end
-polyval(x::Vector, p) = [polyval(xx,p) for xx in x]
-
-function summarizep(ljhgroup::Mass.MicrocalFiles.LJH.LJHGroup, r::UnitRange)
-    Nsamp = record_nsamples(ljhgroup)
-    Npre = pretrig_nsamples(ljhgroup)+2
-    Npost = Nsamp-Npre
-    timebase = frametime(ljhgroup)
-    post_peak_deriv_vect = zeros(Float64, Npost)
-    pre_x = [1-div(Npre,2):Npre-div(Npre,2)]
-    post_x = [Npre+2:Nsamp]
-    pre_poly = Array(Float64, length(r), 2)
-    post_poly = Array(Float64, length(r), 5)
-    pre_residual_rms = Array(Float64, length(r))
-    post_residual_rms = Array(Float64, length(r))
-    for (p, (data, timestamp)) in enumerate(ljhgroup[r])
-    	pre_poly[p,:] = polyfit(pre_x, view(data[1:Npre]),1)
-    	pre_mean, pre_slope = pre_poly[p,:]
-    	post_poly[p,:] = polyfit(post_x, view(data[post_x]), 4)
-    	pre_residual_rms[p] = std(view(data[1:Npre])-polyval(pre_x, pre_poly[p,:]))
-    	post_residual_rms[p] = std(view(data[post_x])-polyval(post_x, pre_poly[p,:]))
-    end
-    out = pre_poly, post_poly, pre_residual_rms, post_residual_rms
-end
-
 end # everywhere
 
 tnow, tlast = time(), time()

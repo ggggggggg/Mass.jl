@@ -143,6 +143,21 @@ function mymean(data::Array{Uint16,2}, Nsamp, Npre, timebase)
 	summary
 end
 
+function fint()
+a = 0
+for j = 1:10000 a+=j end
+a
+end
+function ffloat()
+a = 0.0
+for j = 1:10000 a+=j end
+a
+end
+fint();ffloat()
+@time fint()
+@time ffloat()
+
+
         # posttrig_data = sub(data,Npre+2:endof(data))
         # rise_time::Float64 = estimate_rise_time(posttrig_data, peak_idx-Npre-2,
         #                                peak_val, ptm, timebase)

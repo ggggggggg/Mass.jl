@@ -33,7 +33,7 @@ microcal_open(s) = LJHGroup(s) # for lists of files, I didn't bother to make it 
 # Generally, /x/y/z/data_taken_chan1.ljh becomes /x/y/z/data_taken_mass.hdf5
 function ljhsplit(ljhname::String)
     if isdir(ljhname)
-        dname = dirname(ljhname)
+        dname = ljhname
         bname = last(split(dname,'/'))
         return dname, bname
     end
