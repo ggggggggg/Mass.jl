@@ -1,5 +1,7 @@
 using Mass, ArrayViews
 
+@everywhere using PyCall
+
 @everywhere begin 
 function ptm_correction(params, ptm, ph)
     ptm_offset, slope = params
@@ -58,6 +60,59 @@ hist_step = SelectedStep(addhist, "good",["filt_value_bin_edges", "filt_value_bi
 hist_step_bin_edges = [realmin(Float64),[0:0.001:2], realmax(Float64)]
 hist_step_bin_counts = zeros(Int64, length(hist_step_bin_edges)-1)
 
+
+### CALIBRATION
+function peakassign(locations_arb, locations_true)
+# locations_arb is an array of possible peak locations in arbitrary units, assumed to have an unknown, 
+# nonlinear (but monotonic and smooth) relationship to locations_true
+# locations_arb may contain more peaks than locations_true, including some spurious peaks
+# the goal is to find the best possible set of assignments for entries in locations_arb to 
+# correspond to locations_true by examining all possible assignments and calcualting some figure of merit
+@assert(issorted(locations_arb))
+@assert(issorted(locations_true))
+@assert(length(locations_arb)>=length(locations_true))
+combos = combinations(locations_arb, length(locations_true))
+length(combos)==1 && return first(combos)
+
+best_combo = first(combos)
+best_fom = realmax(Float64)
+for c in combos
+	fom = peakassign_fig_of_merit(c, locations_true)
+	if fom < best_fom
+		best_fom = fom
+		best_combo = c
+	end
+end
+best_combo, best_fom
+end
+
+function peakassign_fig_of_merit(x, y)
+	# average fractional error trying to predict the y value of the middle of 3 points using the slope
+	# from the outer two points and the x value of the middle point
+	err = 0.0
+	for i = 1:length(y)-2
+		yip1_prediction = y[i]+(y[i+2]-y[i])*(x[i+1]-x[i])/(x[i+2]-x[i])
+		err += abs(1-y[i+1]/yip1_prediction)
+	end
+	err /= length(y-2)
+end
+
+@pyimport scipy.signal as scipysignal
+function findpeaks(y, length_scales; min_snr = 3, min_dist=-1)
+	# find peaks using scipy.signal.find_peaks_cwt
+	# then make sure any reported peaks are local maxima
+	# returnds indicies of peaks orderes from lowest to highest y value
+	raw_peakinds = int(scipysignal.find_peaks_cwt(y, length_scales, min_snr=min_snr))
+	peakinds = Int[]
+	min_dist == -1 && (min_dist = int(maximum(length_scales)/2))
+	for p in raw_peakinds
+		r = max(1,p-min_dist):min(length(y), p+min_dist)
+		local_max_ind = indmax(y[r])+first(r)-2
+		local_max_ind in peakinds || push!(peakinds, local_max_ind)
+	end
+	perm = sortperm(y[peakinds])
+	peakinds[perm]
+end
 
 end # everywhere
 
@@ -123,3 +178,20 @@ plot(bin_centers, counts[2:end-1])
 xlabel("filt_value")
 ylabel("counts/bin")
 
+
+
+peakinds = findpeaks(counts, [1,2,4,8], min_snr=4)
+
+energies = [5898,6403,8040]
+usepeakinds = peakinds[end-length(energies)-4:end]
+arbs = sort!(bin_centers[usepeakinds])
+assigns, fom = peakassign(arbs, energies)
+assigninds = indexin(assigns, bin_centers)
+
+figure()
+plot(bin_centers, counts[2:end-1])
+plot(bin_centers[peakinds], counts[2:end-1][peakinds],"o")
+plot(bin_centers[usepeakinds], counts[2:end-1][usepeakinds],"s")
+plot(bin_centers[assigninds], counts[2:end-1][assigninds],"v")
+
+x=4
