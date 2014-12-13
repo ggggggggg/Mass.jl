@@ -41,7 +41,7 @@ function calc_average_pulse_filter(ljhname, good, pulse_height)
 	average_pulse -= mean(average_pulse)
 	average_pulse /= dot(average_pulse, average_pulse)
 end
-avg_pulse_step = Mass.H5Flow.ThresholdStep("selections/good_count", 1000, Step(calc_average_pulse_filter,["pulsefile_names"], ["selections/good", "pulse_rms"], "average_pulse_filter", []))
+avg_pulse_step = Mass.H5Flow.ThresholdStep("selections/good_count", 5000, Step(calc_average_pulse_filter,["pulsefile_names"], ["selections/good", "pulse_rms"], "average_pulse_filter", []))
 
 function filter1lag(r::UnitRange, ljhname, filter, npulses)
 	ljh = microcal_open(ljhname)
@@ -113,6 +113,22 @@ function findpeaks(y, length_scales; min_snr = 3, min_dist=-1)
 	perm = sortperm(y[peakinds])
 	peakinds[perm]
 end
+function findpeaks_wrapped(y,bin_edges, not_used) 
+	peak_inds = findpeaks(y,[1,2,4,8])
+	bin_centers = bin_edges[2]:bin_edges[3]:bin_edges[end-2]+0.5*bin_edges[3]
+	peak_x = bin_centers[peak_inds]
+	peak_inds, peak_x
+end
+findpeaks_step = Mass.H5Flow.ThresholdStep("selections/good_count", 5000, Step(findpeaks_wrapped,["filt_value_bin_counts","filt_value_bin_edges"],["selections/good"], ["filt_value_bin_counts_peak_inds","filt_value_peaks_locations"], []))
+
+function peakassign_wrapped(locations_arb, locations_true)
+	use_arb_locations = locations_arb[max(end-length(locations_true)-4,1):end]
+	arbs = sort!(use_arb_locations)
+	assigns, fom = peakassign(arbs, locations_true)
+end
+assignpeaks_step = Step(peakassign_wrapped,["filt_value_peaks_locations","calibration_energies"],[], ["filt_value_calibration_energy_matches","filt_value_calibration_energy_matches_fom"], [])
+
+
 
 end # everywhere
 
@@ -140,8 +156,11 @@ while pulse_steps_done > 0 && j<4
 			h5step_add(c, avg_pulse_step)
 			h5step_add(c, filter_step)
 			h5step_add(c, hist_step)
+			h5step_add(c, findpeaks_step)
+			h5step_add(c, assignpeaks_step)
 			c["filt_value_bin_edges"] = hist_step_bin_edges
 			c["filt_value_bin_counts"] = hist_step_bin_counts
+			c["calibration_energies"] = [4952,5898,6403,6929,8040]
 		end
 	end
 	tnow, tlast = time(), tnow
@@ -182,7 +201,7 @@ ylabel("counts/bin")
 
 peakinds = findpeaks(counts, [1,2,4,8], min_snr=4)
 
-energies = [5898,6403,8040]
+energies = [4952,5898,6403,6929,8040]
 usepeakinds = peakinds[end-length(energies)-4:end]
 arbs = sort!(bin_centers[usepeakinds])
 assigns, fom = peakassign(arbs, energies)
@@ -195,3 +214,7 @@ plot(bin_centers[usepeakinds], counts[2:end-1][usepeakinds],"s")
 plot(bin_centers[assigninds], counts[2:end-1][assigninds],"v")
 
 x=4
+
+figure()
+plot(c["filt_value_calibration_energy_matches"][:],c["calibration_energies"][:],".")
+plot(bin_centers[assigninds],c["calibration_energies"][:],"s")

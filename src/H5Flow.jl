@@ -247,8 +247,14 @@ place_outs(jlgrp, s::AbstractStep, r::UnitRange, outs) = place_outs(jlgrp, s, r,
 dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep) = dostep(jlgrp, s, range(jlgrp,s))
 inputs_exist(jlgrp, s::AbstractStep) = inputs_exist(jlgrp, s.s)
 outputs_exist(jlgrp, s::AbstractStep) = outputs_exist(jlgrp, s.s)
-range(jlgrp, s::AbstractStep) = minimum(output_lengths(jlgrp, s))+1:minimum(input_lengths(jlgrp,s))
-
+function range(jlgrp, s::AbstractStep)
+    try
+        minimum(output_lengths(jlgrp, s))+1:minimum(input_lengths(jlgrp,s))
+    catch
+        0:0
+    end
+end
+# range(jlgrp, s::AbstractStep) = minimum(output_lengths(jlgrp, s))+1:minimum(input_lengths(jlgrp,s))
 ### ThresholdStep waits until a JldDatset either is long enough, or its value is large enough ###
 ### Then it preforms its contained step if and only if the outputs from the contained step don't exist ###
 ### It is for things like calibration that need a certain amount of data, but only need to be done once ###
