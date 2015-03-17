@@ -135,6 +135,12 @@ function inputs_exist(jlgrp, s::Step)
     o_ins = [exists(jlgrp, name) for name in s.o_ins]
     all(p_ins) && all(o_ins)
 end
+p_inputs(s::Step) = s.p_ins
+o_inputs(s::Step) = s.o_ins
+p_outputs(s::Step) = s.p_outs
+o_outputs(s::Step) = s.o_outs
+funcname(s::Step) = s.func
+
 function place_outs(jlgrp, s::Step, r::UnitRange, outs::NTuple)
     assert(length(outs) == length(s.o_outs)+length(s.p_outs))
     for j in 1:length(s.o_outs) 
@@ -247,6 +253,11 @@ place_outs(jlgrp, s::AbstractStep, r::UnitRange, outs) = place_outs(jlgrp, s, r,
 dostep(jlgrp::Union(JldFile, JldGroup), s::AbstractStep) = dostep(jlgrp, s, range(jlgrp,s))
 inputs_exist(jlgrp, s::AbstractStep) = inputs_exist(jlgrp, s.s)
 outputs_exist(jlgrp, s::AbstractStep) = outputs_exist(jlgrp, s.s)
+p_inputs(s::AbstractStep) = p_inputs(s.s)
+o_inputs(s::AbstractStep) = o_inputs(s.s)
+p_outputs(s::AbstractStep) = p_outputs(s.s)
+o_outputs(s::AbstractStep) = o_outputs(s.s)
+funcname(s::AbstractStep) = funcname(s.s)
 function range(jlgrp, s::AbstractStep)
     try
         minimum(output_lengths(jlgrp, s))+1:minimum(input_lengths(jlgrp,s))

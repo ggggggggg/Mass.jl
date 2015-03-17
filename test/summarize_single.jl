@@ -1,4 +1,4 @@
-using Mass, ArrayViews
+using Mass, ArrayViews, Dierckx
 
 @everywhere using PyCall
 
@@ -114,7 +114,7 @@ function findpeaks(y, length_scales; min_snr = 3, min_dist=-1)
 	peakinds[perm]
 end
 function findpeaks_wrapped(y,bin_edges, not_used) 
-	peak_inds = findpeaks(y,[1,2,4,8])
+	peak_inds = findpeaks(y,[2,4,8,16,32])
 	bin_centers = bin_edges[2]:bin_edges[3]:bin_edges[end-2]+0.5*bin_edges[3]
 	peak_x = bin_centers[peak_inds]
 	peak_inds, peak_x
@@ -128,6 +128,20 @@ function peakassign_wrapped(locations_arb, locations_true)
 end
 assignpeaks_step = Step(peakassign_wrapped,["filt_value_peaks_locations","calibration_energies"],[], ["filt_value_calibration_energy_matches","filt_value_calibration_energy_matches_fom"], [])
 
+function calc_spline(x,y)
+	spl = Spline1D(float(x),float(y),k=1,bc="extrapolate")
+end
+calc_spline_step = Step(calc_spline, ["filt_value_calibration_energy_matches","calibration_energies"],[],["calibration_spline"],[])
+
+function apply_spline(spl, energy_estimator)
+	energy = evaluate(spl, energy_estimator)
+end
+apply_spline_step = Step(apply_spline, ["calibration_spline"],["filt_value"],[],["energy"])
+
+
+hist_step_energy = SelectedStep(addhist, "good",["energy_value_bin_edges", "energy_value_bin_counts"], "energy", "energy_value_bin_counts", ())
+hist_step_energy_bin_edges = [realmin(Float64),[0:2:20000], realmax(Float64)]
+hist_step_energy_bin_counts = zeros(Int64, length(hist_step_energy_bin_edges)-1)
 
 
 end # everywhere
@@ -158,9 +172,14 @@ while pulse_steps_done > 0 && j<4
 			h5step_add(c, hist_step)
 			h5step_add(c, findpeaks_step)
 			h5step_add(c, assignpeaks_step)
+			h5step_add(c, calc_spline_step)
+			h5step_add(c, apply_spline_step)
+			h5step_add(c, hist_step_energy)
 			c["filt_value_bin_edges"] = hist_step_bin_edges
 			c["filt_value_bin_counts"] = hist_step_bin_counts
-			c["calibration_energies"] = [4952,5898,6403,6929,8040]
+			c["calibration_energies"] = [4090,4952,5898,6403,6929,8040]
+			c["energy_value_bin_edges"] = hist_step_energy_bin_edges
+			c["energy_value_bin_counts"] = hist_step_energy_bin_counts
 		end
 	end
 	tnow, tlast = time(), tnow
@@ -184,37 +203,56 @@ ptrms= read(c["postpeak_deriv"])
 a=[ljh[i][1] for i in find(good[1:1000])]
 
 using PyPlot
-pfilt = c["filt_value"][:]
-plot(pfilt[good],".")
+energy = c["energy"][:]
+plot(energy[good],".")
 xlabel("pulse number (arb)")
-ylabel("filt_value (median=1)")
+ylabel("energy of good pulses")
 
-edges = c["filt_value_bin_edges"][:]
-counts = c["filt_value_bin_counts"][:]
+
+# plot spectra to check calibration
+figure()
+title("energy 2 channels")
+edges = c["energy_value_bin_edges"][:]
+counts = c["energy_value_bin_counts"][:]
 bin_centers = edges[2]:edges[3]:edges[end-2]+0.5*edges[3]
-figure()
 plot(bin_centers, counts[2:end-1])
-xlabel("filt_value")
+xlabel("energy")
 ylabel("counts/bin")
+c2 = jld["chan3"]
+plot(bin_centers, c2["energy_value_bin_counts"][2:end-1])
+edges_fv = c["filt_value_bin_edges"][:]
+bin_centers_fv = edges_fv[2]:edges_fv[3]:edges_fv[end-2]+0.5*edges_fv[3]
 
 
-
-peakinds = findpeaks(counts, [1,2,4,8], min_snr=4)
-
-energies = [4952,5898,6403,6929,8040]
-usepeakinds = peakinds[end-length(energies)-4:end]
-arbs = sort!(bin_centers[usepeakinds])
-assigns, fom = peakassign(arbs, energies)
-assigninds = indexin(assigns, bin_centers)
-
+# plot for checking peak finding and assingment
 figure()
-plot(bin_centers, counts[2:end-1])
-plot(bin_centers[peakinds], counts[2:end-1][peakinds],"o")
-plot(bin_centers[usepeakinds], counts[2:end-1][usepeakinds],"s")
-plot(bin_centers[assigninds], counts[2:end-1][assigninds],"v")
+for cc in (jld["chan1"],jld["chan3"])
+	counts = cc["filt_value_bin_counts"][:]
+	peakinds = findpeaks(counts, [2,4,8,16,32], min_snr=4)
 
-x=4
+	energies = vcat(cc["calibration_energies"][:])
+	usepeakinds = peakinds[end-length(energies)-4:end]
+	arbs = sort!(bin_centers_fv[usepeakinds])
+	assigns, fom = peakassign(arbs, energies)
+	assigninds = indexin(assigns, bin_centers_fv)
 
-figure()
-plot(c["filt_value_calibration_energy_matches"][:],c["calibration_energies"][:],".")
-plot(bin_centers[assigninds],c["calibration_energies"][:],"s")
+	plot(bin_centers_fv, counts[2:end-1])
+	plot(bin_centers_fv[peakinds], counts[2:end-1][peakinds],"o")
+	plot(bin_centers_fv[usepeakinds], counts[2:end-1][usepeakinds],"s")
+	plot(bin_centers_fv[assigninds], counts[2:end-1][assigninds],"v")
+end
+
+# test spline
+
+# spl = read(c["calibration_spline"])
+# counts, edges = plt.hist(evaluate(spl, c["filt_value"][:][good]),0:4:20000,histtype="step")
+# plt.hist(c["filt_value"][:][good]*6937,0::20000,histtype="step")
+# x=4
+# try
+# figure()
+# plot(c["filt_value_calibration_energy_matches"][:],c["calibration_energies"][:],".")
+# plot(bin_centers[assigninds],c["calibration_energies"][:],"s")
+# spl = Spline1D(c["filt_value_calibration_energy_matches"][:],float(c["calibration_energies"][:]),k=1,bc="extrapolate")
+# plot(c["filt_value_bin_edges"][:],evaluate(spl, c["filt_value_bin_edges"][:]))
+# catch
+# end	
