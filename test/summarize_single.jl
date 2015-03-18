@@ -126,12 +126,12 @@ function peakassign_wrapped(locations_arb, locations_true)
 	arbs = sort!(use_arb_locations)
 	assigns, fom = peakassign(arbs, locations_true)
 end
-assignpeaks_step = Step(peakassign_wrapped,["filt_value_peaks_locations","calibration_energies"],[], ["filt_value_calibration_energy_matches","filt_value_calibration_energy_matches_fom"], [])
+assignpeaks_step = H5Flow.OneTimeStep(Step(peakassign_wrapped,["filt_value_peaks_locations","calibration_energies"],[], ["filt_value_calibration_energy_matches","filt_value_calibration_energy_matches_fom"], []))
 
 function calc_spline(x,y)
 	spl = Spline1D(float(x),float(y),k=1,bc="extrapolate")
 end
-calc_spline_step = Step(calc_spline, ["filt_value_calibration_energy_matches","calibration_energies"],[],["calibration_spline"],[])
+calc_spline_step = H5Flow.OneTimeStep(Step(calc_spline, ["filt_value_calibration_energy_matches","calibration_energies"],[],["calibration_spline"],[]))
 
 function apply_spline(spl, energy_estimator)
 	energy = evaluate(spl, energy_estimator)
@@ -149,44 +149,46 @@ end # everywhere
 tnow, tlast = time(), time()
 tstart = time()
 println("starting loop!")
-pulse_steps_done = 1 # initializat with any nonzero value
+pulse_steps_done = typemax(Int) # initializat with any nonzero value
 max_chans = 2
 ljhname, ljhopen = "/Volumes/Drobo/exafs_data/20141030_brown_ferrioxalate_1M_calibronium/20141030_brown_ferrioxalate_1M_calibronium_chan1.ljh", false
 close(jldopen(hdf5_name_from_ljh(ljhname),"w")) #wipe the file
-j=0
-while pulse_steps_done > 0 && j<4
-	j+=1
-	#ljhname, ljhopen = MicrocalFiles.matter_writing_status()
-	ljhname, ljhopen = "/Volumes/Drobo/exafs_data/20141030_brown_ferrioxalate_1M_calibronium", false
-	jldname = hdf5_name_from_ljh(ljhname)
-	# jldname = "/Volumes/Drobo/exafs_data/20141008_brown_ferrioxalate_straw_2mm_emission/20141008_brown_ferrioxalate_straw_2mm_emission_mass_julia.hdf5"
-	jldopen(jldname,isfile(jldname) ? "r+" : "w") do jld
-		chans_to_init = 1:2:2*max_chans
-		cg = init_channels(jld, ljhname, chans_to_init)
-		length(cg) > 0 && println("initialized $(length(cg)) channels in file $jldname from channels $chans_to_init")
-		for c in cg
-			h5step_add(c, summarize_step)
-			h5step_add(c, select_step)
-			h5step_add(c, avg_pulse_step)
-			h5step_add(c, filter_step)
-			h5step_add(c, hist_step)
-			h5step_add(c, findpeaks_step)
-			h5step_add(c, assignpeaks_step)
-			h5step_add(c, calc_spline_step)
-			h5step_add(c, apply_spline_step)
-			h5step_add(c, hist_step_energy)
-			c["filt_value_bin_edges"] = hist_step_bin_edges
-			c["filt_value_bin_counts"] = hist_step_bin_counts
-			c["calibration_energies"] = [4090,4952,5898,6403,6929,8040]
-			c["energy_value_bin_edges"] = hist_step_energy_bin_edges
-			c["energy_value_bin_counts"] = hist_step_energy_bin_counts
-		end
+#ljhname, ljhopen = MicrocalFiles.matter_writing_status()
+ljhname, ljhopen = "/Volumes/Drobo/exafs_data/20141030_brown_ferrioxalate_1M_calibronium", false
+jldname = hdf5_name_from_ljh(ljhname)
+# jldname = "/Volumes/Drobo/exafs_data/20141008_brown_ferrioxalate_straw_2mm_emission/20141008_brown_ferrioxalate_straw_2mm_emission_mass_julia.hdf5"
+jldopen(jldname,isfile(jldname) ? "r+" : "w") do jld
+	chans_to_init = 1:2:2*max_chans
+	cg = init_channels(jld, ljhname, chans_to_init)
+	length(cg) > 0 && println("initialized $(length(cg)) channels in file $jldname from channels $chans_to_init")
+	for c in cg
+		h5step_add(c, summarize_step)
+		h5step_add(c, select_step)
+		h5step_add(c, avg_pulse_step)
+		h5step_add(c, filter_step)
+		h5step_add(c, hist_step)
+		h5step_add(c, findpeaks_step)
+		h5step_add(c, assignpeaks_step)
+		h5step_add(c, calc_spline_step)
+		h5step_add(c, apply_spline_step)
+		h5step_add(c, hist_step_energy)
+		c["filt_value_bin_edges"] = hist_step_bin_edges
+		c["filt_value_bin_counts"] = hist_step_bin_counts
+		c["calibration_energies"] = [4090,4952,5898,6403,6929,8040]
+		c["energy_value_bin_edges"] = hist_step_energy_bin_edges
+		c["energy_value_bin_counts"] = hist_step_energy_bin_counts
 	end
+end
+
+j=0
+while pulse_steps_done > 0 && j<6
+	j+=1
 	tnow, tlast = time(), tnow
 	sleeptime = 1-(tnow-tlast)
 	sleeptime > 0 && sleep(sleeptime)
-	jld = jldopen(jldname,"r+")
+	jld = jldopen(jldname,"r+") # dont use do, or pulse_steps_done wont come out
 	pulse_steps_done = update!(jld, 10000)
+	println(pulse_steps_done)
 	close(jld)
 	println("outer loop")
 end

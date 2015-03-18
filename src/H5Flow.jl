@@ -379,6 +379,17 @@ function place_outs(jlgrp, s::SelectedStep, r::UnitRange, outs::NTuple)
 end
 output_lengths(jlgrp, s::SelectedStep) = [[read(jlgrp, s.num_seen_name, 0)]]
 
+## One time step
+immutable OneTimeStep <: AbstractStep
+    s::Step
+end
+function dostep(jlgrp::Union(JldFile, JldGroup), s::OneTimeStep, max_step_size::Int)
+    inputs_exist(jlgrp,s) || (println(name(jlgrp), " inputs don't exist, so skipping ",s);return)
+    outputs_exist(jlgrp,s) && (println(name(jlgrp), " outputs exist, so skipping ",s);return)
+    r=0:0
+    outsref = calc_outs(jlgrp, s, r)
+    outsref,r
+end
 
 function pythonize(jlgrp::JldGroup, o_ins, a_outs)
     # non per pulse "o" datasets get written as attrs
